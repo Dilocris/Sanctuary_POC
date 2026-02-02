@@ -215,6 +215,199 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				add_message("Guard Stance toggled on.")
 				return ActionResult.new(true, "", {"toggled": "on"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.LUD_LUNGING:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var base_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
+			var bonus_dmg = randi_range(1, 8)
+			var total_dmg = base_result.get("payload", {}).get("damage", 0) + bonus_dmg
+			var target_lung = get_actor_by_id(targets[0])
+			if target_lung != null:
+				# Re-apply damage to account for bonus properly (a bit hacky, but consistent with current simple pipeline)
+				# Better way: execute_basic_attack should return damage before applying, but for now we apply difference
+				target_lung.apply_damage(bonus_dmg)
+				add_message(actor.display_name + " lunges! Bonus " + str(bonus_dmg) + " damage!")
+			return ActionResult.new(true, "", {
+				"damage": total_dmg,
+				"bonus": bonus_dmg,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.LUD_PRECISION:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			# Precision ignores evasion (not implemented yet), so same as Lunging for now but explicit
+			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
+			var bonus_prec = randi_range(1, 8)
+			var total_prec = base_prec.get("payload", {}).get("damage", 0) + bonus_prec
+			var target_prec = get_actor_by_id(targets[0])
+			if target_prec != null:
+				target_prec.apply_damage(bonus_prec)
+				add_message(actor.display_name + " strikes precisely! Bonus " + str(bonus_prec) + " damage!")
+			return ActionResult.new(true, "", {
+				"damage": total_prec,
+				"bonus": bonus_prec,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.LUD_SHIELD_BASH:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var bash_result = execute_basic_attack(actor_id, targets[0], 1.0)
+			var stunned = false
+			if randf() <= 0.40:
+				var target_bash = get_actor_by_id(targets[0])
+				if target_bash != null:
+					target_bash.add_status(StatusEffectFactory.stun(1))
+					stunned = true
+					add_message(target_bash.display_name + " is stunned by the shield bash!")
+			return ActionResult.new(true, "", {
+				"damage": bash_result.get("payload", {}).get("damage", 0),
+				"stun_applied": stunned,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.LUD_RALLY:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var target_rally = get_actor_by_id(targets[0])
+			var heal_amt = randi_range(1, 8) + 5
+			if target_rally != null:
+				target_rally.heal(heal_amt)
+				add_message(actor.display_name + " rallies " + target_rally.display_name + " for " + str(heal_amt) + " HP!")
+			return ActionResult.new(true, "", {
+				"healed": heal_amt,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.NINOS_HEALING_WORD:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var target_hw = get_actor_by_id(targets[0])
+			var heal_val = randi_range(2, 8) + 5
+			if target_hw != null:
+				target_hw.heal(heal_val)
+				add_message(actor.display_name + " heals " + target_hw.display_name + " for " + str(heal_val) + " HP!")
+			return ActionResult.new(true, "", {
+				"healed": heal_val,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.NINOS_VICIOUS_MOCKERY:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var target_vm = get_actor_by_id(targets[0])
+			var damage_vm = 15 + (int(actor.stats.mag * 0.3) if actor else 0)
+			if target_vm != null:
+				target_vm.apply_damage(damage_vm)
+				target_vm.add_status(StatusEffectFactory.atk_down())
+				add_message(actor.display_name + " mocks " + target_vm.display_name + "! " + str(damage_vm) + " dmg + ATK Down!")
+			return ActionResult.new(true, "", {
+				"damage": damage_vm,
+				"debuff": "atk_down",
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.NINOS_BLESS:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			for t_id in targets:
+				var t_bless = get_actor_by_id(t_id)
+				if t_bless != null:
+					t_bless.add_status(StatusEffectFactory.bless_buff())
+			add_message(actor.display_name + " blesses the party!")
+			return ActionResult.new(true, "", {
+				"buff": "bless",
+				"targets": targets,
+				"attacker_id": actor_id
+			}).to_dict()
+		ActionIds.NINOS_INSPIRE_ATTACK:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			# For now, just a placeholder message for Inspiration as we don't have the 'next attack' logic fully hooked yet
+			# We can simulate it by giving a temporary ATK_UP or similar if needed, or just logging it.
+			# GDD says: "Target ally's next attack deals +1d8 damage". 
+			# We will skip complex trigger logic for this pass and just show it consumed.
+			add_message(actor.display_name + " inspired " + targets[0] + " (Attack)!")
+			return ActionResult.new(true, "", {
+				"inspired": "attack",
+				"target_id": targets[0],
+				"attacker_id": actor_id
+			}).to_dict()
+
+			return ActionResult.new(true, "", {
+				"inspired": "attack",
+				"target_id": targets[0],
+				"attacker_id": actor_id
+			}).to_dict()
+		ActionIds.CAT_FIRE_BOLT:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action) # MP cost 0 but standard call
+			var target_fb = get_actor_by_id(targets[0])
+			var dmg_fb = randi_range(1, 10) + (int(actor.stats.mag * 0.5) if actor else 0)
+			if target_fb != null:
+				target_fb.apply_damage(dmg_fb)
+				add_message(actor.display_name + " casts Fire Bolt at " + target_fb.display_name + "! " + str(dmg_fb) + " Fire dmg")
+			return ActionResult.new(true, "", {
+				"damage": dmg_fb,
+				"element": "fire",
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.CAT_FIREBALL:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var total_dmg_fireball = 0
+			var hit_targets = []
+			for t_id in targets:
+				var t_fireball = get_actor_by_id(t_id)
+				if t_fireball != null:
+					var dmg_val = randi_range(8, 64) # 8d6 roughly
+					# For poc, simple formula:
+					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
+					t_fireball.apply_damage(dmg_val)
+					hit_targets.append(t_fireball.display_name)
+					total_dmg_fireball += dmg_val
+			add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
+			return ActionResult.new(true, "", {
+				"damage_total": total_dmg_fireball,
+				"targets_hit": hit_targets.size(),
+				"attacker_id": actor_id
+			}).to_dict()
+		ActionIds.CAT_MAGE_ARMOR:
+			if actor != null:
+				if actor.has_status(StatusEffectIds.MAGE_ARMOR):
+					add_message(actor.display_name + " already has Mage Armor.")
+					return ActionResult.new(false, "already_active").to_dict()
+				actor.consume_resources(action)
+				actor.add_status(StatusEffectFactory.mage_armor())
+				add_message(actor.display_name + " casts Mage Armor!")
+				return ActionResult.new(true, "", {
+					"buff": "mage_armor",
+					"attacker_id": actor_id
+				}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+
 		_:
 			return ActionResult.new(false, "unknown_action").to_dict()
 

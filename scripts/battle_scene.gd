@@ -7,6 +7,7 @@ var turn_order_label: Label
 var action_log_label: Label
 var queue_label: Label
 var resource_label: Label
+var status_effects_label: Label
 var demo_running: bool = false
 var ai_controller: AiController
 
@@ -27,6 +28,8 @@ func _ready() -> void:
 	add_child(queue_label)
 	resource_label = _make_resource_label()
 	add_child(resource_label)
+	status_effects_label = _make_status_effects_label()
+	add_child(status_effects_label)
 
 	battle_manager.message_added.connect(_on_message_added)
 	battle_manager.turn_order_updated.connect(_on_turn_order_updated)
@@ -203,6 +206,22 @@ func _make_resource_label() -> Label:
 	return label
 
 
+func _make_status_effects_label() -> Label:
+	var label = Label.new()
+	label.name = "StatusEffectsLabel"
+	label.anchor_left = 0.0
+	label.anchor_top = 0.0
+	label.anchor_right = 1.0
+	label.anchor_bottom = 0.0
+	label.offset_left = 600
+	label.offset_top = 12
+	label.offset_right = -12
+	label.offset_bottom = 200
+	label.text = "Active Statuses:\n(None)"
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return label
+
+
 func _print_turn_order(order: Array) -> void:
 	print("Turn order: ", order)
 
@@ -210,26 +229,26 @@ func _print_turn_order(order: Array) -> void:
 func _update_status_label(lines: Array) -> void:
 	if status_label == null:
 		return
-	status_label.text = "\n".join(lines)
+	status_label.text = _compact_lines(lines, 3)
 
 
 func _on_message_added(text: String) -> void:
 	if log_panel == null:
 		return
 	var lines = battle_manager.battle_state.get("message_log", [])
-	log_panel.text = "Message log:\n" + "\n".join(lines)
+	log_panel.text = "Message log:\n" + _compact_lines(lines, 6)
 
 
 func _on_turn_order_updated(order: Array) -> void:
 	if turn_order_label == null:
 		return
-	turn_order_label.text = "Turn order: " + str(order)
+	turn_order_label.text = "Turn order: " + _compact_order(order)
 
 
 func _on_active_character_changed(actor_id: String) -> void:
 	if turn_order_label == null:
 		return
-	turn_order_label.text = "Turn order: " + str(battle_manager.battle_state.get("turn_order", [])) + \
+	turn_order_label.text = "Turn order: " + _compact_order(battle_manager.battle_state.get("turn_order", [])) + \
 		"\nActive: " + actor_id
 
 
@@ -268,6 +287,33 @@ func _update_resource_label() -> void:
 		str(kairus.resources.get("ki", {}).get("max", 0))
 	var imbue_line = "Fire Imbue: " + ("ON" if kairus.has_status(StatusEffectIds.FIRE_IMBUE) else "OFF")
 	resource_label.text = ki_line + "\n" + imbue_line
+	_update_status_effects_text()
+
+func _update_status_effects_text() -> void:
+	if status_effects_label == null:
+		return
+	var text = "Active Statuses:\n"
+	var actors = battle_manager.battle_state.party + battle_manager.battle_state.enemies
+	for actor in actors:
+		if actor.status_effects.size() > 0:
+			var statuses = []
+			for s in actor.status_effects:
+				statuses.append(battle_manager._get_status_id(s))
+			text += actor.display_name + ": " + ", ".join(statuses) + "\n"
+	status_effects_label.text = text
+
+
+func _compact_lines(lines: Array, max_lines: int) -> String:
+	if lines.is_empty():
+		return ""
+	var start = max(0, lines.size() - max_lines)
+	return "\n".join(lines.slice(start, lines.size()))
+
+
+func _compact_order(order: Array) -> String:
+	if order.is_empty():
+		return "[]"
+	return "[" + ", ".join(order) + "]"
 
 
 func _run_demo_round() -> void:
@@ -301,7 +347,10 @@ func _handle_turn(actor_id: String) -> void:
 	var header = "Active: " + actor_id + " | Turn: " + str(battle_manager.battle_state.turn_count)
 
 	if _is_party_member(actor_id):
-		var kairus_action = false
+		var processed = false
+		var result_payload = {}
+		
+		# Kairus Logic
 		if actor_id == "kairus":
 			var kairus = battle_manager.get_actor_by_id("kairus")
 			if battle_manager.battle_state.turn_count % 2 == 0:
@@ -309,7 +358,6 @@ func _handle_turn(actor_id: String) -> void:
 					battle_manager.enqueue_action(ActionFactory.kairus_flurry(actor_id, "marcus_gelt"))
 				else:
 					battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))
-				kairus_action = true
 			else:
 				if kairus != null and kairus.has_status(StatusEffectIds.FIRE_IMBUE):
 					battle_manager.enqueue_action(ActionFactory.kairus_fire_imbue(actor_id))
@@ -317,15 +365,82 @@ func _handle_turn(actor_id: String) -> void:
 					battle_manager.enqueue_action(ActionFactory.kairus_fire_imbue(actor_id))
 				else:
 					battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))
-				kairus_action = true
-		if not kairus_action:
+			processed = true
+
+		# Ludwig Logic
+		elif actor_id == "ludwig":
+			var ludwig = battle_manager.get_actor_by_id("ludwig")
+			if ludwig != null:
+				if battle_manager.battle_state.turn_count % 3 == 0:
+					if not ludwig.has_status(StatusEffectIds.GUARD_STANCE):
+						battle_manager.enqueue_action(ActionFactory.ludwig_guard_stance(actor_id))
+					else:
+						battle_manager.enqueue_action(ActionFactory.ludwig_rally(actor_id, "ludwig"))
+				else:
+					if ludwig.has_status(StatusEffectIds.GUARD_STANCE):
+						battle_manager.enqueue_action(ActionFactory.ludwig_guard_stance(actor_id))
+					else:
+						if ludwig.get_resource_current("superiority_dice") > 0:
+							battle_manager.enqueue_action(ActionFactory.ludwig_lunging_attack(actor_id, "marcus_gelt"))
+						else:
+							battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt"))
+			processed = true
+
+		# Ninos Logic
+		elif actor_id == "ninos":
+			var ninos = battle_manager.get_actor_by_id("ninos")
+			if ninos != null:
+				if battle_manager.battle_state.turn_count % 3 == 0:
+					# Use Bless if MP available, else Mockery
+					if ninos.mp_current >= 10:
+						battle_manager.enqueue_action(ActionFactory.ninos_bless(actor_id, ["kairus", "ludwig", "ninos", "catraca"]))
+					else:
+						# Fallback if low MP
+						battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt"))
+				elif battle_manager.battle_state.turn_count % 3 == 1:
+					# Use Vicious Mockery
+					if ninos.mp_current >= 5:
+						battle_manager.enqueue_action(ActionFactory.ninos_vicious_mockery(actor_id, "marcus_gelt"))
+					else:
+						battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt"))
+				else:
+					# Healing Word on random ally or Inspire Attack on Kairus
+					if ninos.get_resource_current("bardic_inspiration") > 0:
+						battle_manager.enqueue_action(ActionFactory.ninos_inspire_attack(actor_id, "kairus"))
+					elif ninos.mp_current >= 6:
+						battle_manager.enqueue_action(ActionFactory.ninos_healing_word(actor_id, "ludwig")) # Heal tank
+					else:
+						battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt"))
+			processed = true
+
+		# Catraca Logic
+		elif actor_id == "catraca":
+			var catraca = battle_manager.get_actor_by_id("catraca")
+			if catraca != null:
+				# Use Mage Armor if not active
+				if not catraca.has_status(StatusEffectIds.MAGE_ARMOR):
+					battle_manager.enqueue_action(ActionFactory.catraca_mage_armor(actor_id))
+				else:
+					# Cycle between Fireball (AoE cheap sim) and Fire Bolt
+					# If enough Sorcery Points/MP, use Fireball (simulating Quickened or just big spell)
+					if battle_manager.battle_state.turn_count % 3 == 0 and catraca.mp_current >= 18:
+						battle_manager.enqueue_action(ActionFactory.catraca_fireball(actor_id, ["marcus_gelt"]))
+					else:
+						battle_manager.enqueue_action(ActionFactory.catraca_fire_bolt(actor_id, "marcus_gelt"))
+			processed = true
+
+		# Default Logic/Fallback
+		if not processed:
 			battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))
-		var attack_result = battle_manager.process_next_action()
+
+		var result = battle_manager.process_next_action()
+		result_payload = result.get("payload", result)
+
 		var hp_line = ""
 		if marcus != null:
 			hp_line = "Marcus HP: " + str(marcus.hp_current) + "/" + str(marcus.stats["hp_max"])
-		var result_line = "Attack: " + str(attack_result.get("payload", attack_result))
-		_update_status_label([header, "Turn order: " + str(order), result_line, hp_line])
+		
+		_update_status_label([header, "Turn order: " + str(order), "Action: " + str(result_payload), hp_line])
 	else:
 		var boss = battle_manager.get_actor_by_id(actor_id)
 		var ai_action = {}
