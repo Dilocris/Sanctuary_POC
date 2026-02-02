@@ -264,8 +264,10 @@ func _update_resource_label() -> void:
 	if kairus == null:
 		resource_label.text = "Resources: (kairus missing)"
 		return
-	resource_label.text = "Kairus Ki: " + str(kairus.get_resource_current("ki")) + "/" + \
+	var ki_line = "Kairus Ki: " + str(kairus.get_resource_current("ki")) + "/" + \
 		str(kairus.resources.get("ki", {}).get("max", 0))
+	var imbue_line = "Fire Imbue: " + ("ON" if kairus.has_status(StatusEffectIds.FIRE_IMBUE) else "OFF")
+	resource_label.text = ki_line + "\n" + imbue_line
 
 
 func _run_demo_round() -> void:
@@ -301,11 +303,20 @@ func _handle_turn(actor_id: String) -> void:
 	if _is_party_member(actor_id):
 		var kairus_action = false
 		if actor_id == "kairus":
+			var kairus = battle_manager.get_actor_by_id("kairus")
 			if battle_manager.battle_state.turn_count % 2 == 0:
-				battle_manager.enqueue_action(ActionFactory.kairus_flurry(actor_id, "marcus_gelt"))
+				if kairus != null and kairus.get_resource_current("ki") >= 2:
+					battle_manager.enqueue_action(ActionFactory.kairus_flurry(actor_id, "marcus_gelt"))
+				else:
+					battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))
 				kairus_action = true
 			else:
-				battle_manager.enqueue_action(ActionFactory.kairus_fire_imbue(actor_id))
+				if kairus != null and kairus.has_status(StatusEffectIds.FIRE_IMBUE):
+					battle_manager.enqueue_action(ActionFactory.kairus_fire_imbue(actor_id))
+				elif kairus != null and kairus.get_resource_current("ki") >= 1:
+					battle_manager.enqueue_action(ActionFactory.kairus_fire_imbue(actor_id))
+				else:
+					battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))
 				kairus_action = true
 		if not kairus_action:
 			battle_manager.enqueue_action(ActionFactory.basic_attack(actor_id, "marcus_gelt", 1.0))

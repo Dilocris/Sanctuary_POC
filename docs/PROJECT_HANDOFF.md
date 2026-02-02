@@ -106,6 +106,10 @@ We're building a single boss battle (Marcus Gelt) in SNES Final Fantasy 4 style 
 - Started Phase 3: added Kairus action IDs + ActionFactory entries (Flurry, Stunning Strike, Fire Imbue).
 - `BattleManager` now resolves Kairus actions, consumes Ki, applies stun, and handles Fire Imbue toggle + Ki drain.
 - Harness now alternates Kairus actions (Flurry/Fire Imbue) and displays Ki in a resource label.
+- Harness now shows Fire Imbue ON/OFF and falls back to basic attack if Ki is insufficient.
+- Action validation now checks resource costs.
+- Increased message log limit for easier debugging (DOT/HOT visibility).
+- Started Phase 3 Ludwig: added Guard Stance action + status toggle handling.
 
 **Reference Sections in GDD:**
 - Section 2: Core Battle System
@@ -326,3 +330,4 @@ Let's start by creating the folder structure, then we'll build scripts/character
 - Basic initialization
 
 Reference GDD Sections 2.2 (Core Stats), 3.1-3.4 (Character Specifications), and 8.1 (State Management).
+

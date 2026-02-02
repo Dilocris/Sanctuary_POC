@@ -24,7 +24,7 @@ var battle_state := {
 
 const TURN_ORDER_RANDOM_MIN := 0
 const TURN_ORDER_RANDOM_MAX := 5
-const MESSAGE_LOG_LIMIT := 4
+const MESSAGE_LOG_LIMIT := 12
 
 
 func setup_state(party: Array, enemies: Array) -> void:
@@ -205,6 +205,16 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				add_message("Fire Imbue toggled on.")
 				return ActionResult.new(true, "", {"toggled": "on"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.LUD_GUARD_STANCE:
+			if actor != null:
+				if actor.has_status(StatusEffectIds.GUARD_STANCE):
+					actor.remove_status(StatusEffectIds.GUARD_STANCE)
+					add_message("Guard Stance toggled off.")
+					return ActionResult.new(true, "", {"toggled": "off"}).to_dict()
+				actor.add_status(StatusEffectFactory.guard_stance())
+				add_message("Guard Stance toggled on.")
+				return ActionResult.new(true, "", {"toggled": "on"}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
 		_:
 			return ActionResult.new(false, "unknown_action").to_dict()
 
@@ -229,6 +239,11 @@ func _validate_action(action: Dictionary) -> Dictionary:
 			return ActionResult.new(false, "missing_target").to_dict()
 		if target.is_ko():
 			return ActionResult.new(false, "target_ko").to_dict()
+	if action.get("resource_type", "") != "":
+		if actor is Character:
+			var cost = action.get("resource_cost", 0)
+			if actor.get_resource_current(action.resource_type) < cost:
+				return ActionResult.new(false, "insufficient_resources").to_dict()
 	return ActionResult.new(true).to_dict()
 
 

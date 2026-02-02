@@ -15,3 +15,7 @@ static func stun(turns: int = 1) -> StatusEffect:
 
 static func fire_imbue() -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.FIRE_IMBUE, -1, 0, [StatusTags.POSITIVE, StatusTags.TOGGLE, StatusTags.ELEMENTAL])
+
+
+static func guard_stance() -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.GUARD_STANCE, -1, 0, [StatusTags.POSITIVE, StatusTags.TOGGLE])

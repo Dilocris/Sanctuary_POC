@@ -52,3 +52,12 @@ static func kairus_fire_imbue(actor_id: String) -> Dictionary:
 		"resource_cost": 0,
 		"tags": [ActionTags.TOGGLE, ActionTags.ELEMENTAL, ActionTags.SELF]
 	}
+
+
+static func ludwig_guard_stance(actor_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.LUD_GUARD_STANCE,
+		"actor_id": actor_id,
+		"targets": [actor_id],
+		"tags": [ActionTags.TOGGLE, ActionTags.SELF]
+	}
