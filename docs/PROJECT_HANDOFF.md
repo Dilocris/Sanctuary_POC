@@ -78,6 +78,34 @@ We're building a single boss battle (Marcus Gelt) in SNES Final Fantasy 4 style 
 - Added `DamageCalculator` with physical damage formula + base crit (no elemental/status modifiers yet).
 - Added `scripts/battle_scene.gd` and wired `scenes/battle/battle_scene.tscn` as a minimal harness to print turn order and execute a basic attack.
 - Added on-screen debug Label in the battle scene harness to show turn order, attack result, and Marcus HP for quick visual feedback.
+- Added scaffolding scripts for Phase 1 completeness: `scripts/status_effect.gd`, `scripts/boss.gd`, `scripts/ai_controller.gd`.
+- Added end-of-turn status effect processing in `BattleManager` and a demo round runner in the battle scene to step through the full turn order.
+- Updated the harness to use `Boss` for Marcus and apply a demo POISON status to validate DOT ticking.
+- Added a demo REGEN status on Ninos to validate HOT ticking alongside POISON.
+- Added a simple on-screen message log panel in the battle harness and wired it to `BattleManager` messages.
+- Enemy turns in the harness now call `AiController` (stub) for a unified action path.
+- `AiController` now returns a basic attack targeting the first living party member; the harness executes it.
+- Added a turn order label wired to BattleManager signals and extended the demo to run two full rounds.
+- Added an action queue scaffold in `BattleManager` (enqueue/process) for future ability execution.
+- Harness now routes basic attacks through the action queue to validate the pipeline.
+- `BattleManager` now logs queued/executed actions to the message log for visibility.
+- Added `ActionIds` constants to centralize action identifiers and avoid magic strings.
+- Added `ActionFactory` helper to standardize action dictionaries.
+- Added action validation + action log in `BattleManager` and hooked queue/execution signals in the harness.
+- Added an on-screen action log label to show the latest executed action result.
+- Added `StatusEffectFactory` for consistent POISON/REGEN setup; harness now uses it.
+- Added helper methods in `BattleManager` for applying status by id and querying living party/enemy lists.
+- Added `ActionFactory.skip_turn`, AI now uses `ActionFactory`, and `BattleManager` validates actor/target state + stun/charm before execution.
+- Added a queue size label to the harness plus action queue status updates.
+- Added `ActionResult` wrapper for consistent action outcomes (ok/error/payload).
+- Updated action processing + harness display to use ActionResult payloads.
+- `execute_basic_attack` now returns an ActionResult payload with attacker/target/damage.
+- Added Action tags/Status IDs constants and wired basic attack + status factory to use them.
+- Added `battle_ended` signal in `BattleManager` and wired it in the harness.
+- Added `StatusTags` + `ActionSchemaValidator` to reduce string drift and validate action shapes.
+- Started Phase 3: added Kairus action IDs + ActionFactory entries (Flurry, Stunning Strike, Fire Imbue).
+- `BattleManager` now resolves Kairus actions, consumes Ki, applies stun, and handles Fire Imbue toggle + Ki drain.
+- Harness now alternates Kairus actions (Flurry/Fire Imbue) and displays Ki in a resource label.
 
 **Reference Sections in GDD:**
 - Section 2: Core Battle System
@@ -92,6 +120,7 @@ We're building a single boss battle (Marcus Gelt) in SNES Final Fantasy 4 style 
 2. Implement physical damage formula (GDD Section 2.3) ✅
 3. Create basic "Attack" action for all characters ✅ (BattleManager helper)
 4. Test with 4 party members vs. 1 boss dummy
+   - Pending: run Checkpoint A and confirm expected UI/console output
 
 **Validation:** Can select Attack → damages boss → next turn advances
 
@@ -219,12 +248,21 @@ After each phase, validate:
 - [ ] Status effects apply and expire correctly
 - [ ] UI updates reflect game state accurately
 
+## Testing Checkpoints
+
+**Checkpoint A (Phase 2 smoke test)**
+- Run `scenes/battle/battle_scene.tscn`
+- Expect 2 full rounds, DOT/HOT ticks, and message log updates
+- Confirm boss basic attack executes via `AiController`
+- Expected UI: Turn order label updates per active actor, queue size updates, action log shows payloads
+- Expected console: "Turn order:", "Action enqueued:", "Action executed:" lines across 2 rounds
+
 ## Next Steps for Claude Code
 
 **Immediate Action:**
 1. Test Phase 2 with 4 party members vs. 1 boss dummy
-2. Add `status_effect.gd`, `boss.gd`, `ai_controller.gd` stubs for Phase 1 completeness
-3. Wire a minimal battle scene to validate turn order and attack flow
+2. Expand the battle harness to advance turns across the full order ✅
+3. Build `status_effect` application/ticking in `Character` and `BattleManager` ✅
 
 **First Conversation Prompt:**
 "I need to implement Phase 1 (Project Structure) for a SNES FF4-style turn-based battle system. The complete design document is in docs/battle_system_gdd.md. Please read it, then help me create the folder structure and base Character class with stats, resources, and status effect tracking."

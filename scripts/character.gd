@@ -64,8 +64,8 @@ func heal(amount: int) -> void:
 		emit_signal("ko_state_changed", is_ko())
 
 
-func add_status(status: Dictionary) -> void:
-	var status_id: String = status.get("id", "")
+func add_status(status: Variant) -> void:
+	var status_id = _get_status_id(status)
 	if status_id.is_empty():
 		return
 	status_effects.append(status)
@@ -76,14 +76,14 @@ func remove_status(status_id: String) -> void:
 	if status_id.is_empty():
 		return
 	for i in range(status_effects.size() - 1, -1, -1):
-		if status_effects[i].get("id", "") == status_id:
+		if _get_status_id(status_effects[i]) == status_id:
 			status_effects.remove_at(i)
 	emit_signal("status_removed", status_id)
 
 
 func has_status(status_id: String) -> bool:
 	for status in status_effects:
-		if status.get("id", "") == status_id:
+		if _get_status_id(status) == status_id:
 			return true
 	return false
 
@@ -99,7 +99,7 @@ func can_use_action(action: Dictionary) -> bool:
 
 func consume_resources(action: Dictionary) -> void:
 	if action.get("resource_type", "") != "":
-		_consume_resource(action.resource_type, action.get("resource_cost", 0))
+		consume_resource(action.resource_type, action.get("resource_cost", 0))
 	var mp_cost = action.get("mp_cost", 0)
 	if mp_cost > 0:
 		mp_current = max(0, mp_current - mp_cost)
@@ -128,6 +128,24 @@ func _consume_resource(resource_type: String, cost: int) -> void:
 	emit_signal("resource_changed", resource_type, resources[resource_type]["current"], max_val)
 
 
+func consume_resource(resource_type: String, cost: int) -> void:
+	_consume_resource(resource_type, cost)
+
+
+func get_resource_current(resource_type: String) -> int:
+	if not resources.has(resource_type):
+		return 0
+	return resources[resource_type].get("current", 0)
+
+
+func set_resource_current(resource_type: String, value: int) -> void:
+	if not resources.has(resource_type):
+		return
+	var max_val = resources[resource_type].get("max", 0)
+	resources[resource_type]["current"] = clamp(value, 0, max_val)
+	emit_signal("resource_changed", resource_type, resources[resource_type]["current"], max_val)
+
+
 func _merge_stats(overrides: Dictionary) -> Dictionary:
 	var merged := stats.duplicate(true)
 	for key in overrides.keys():
@@ -144,3 +162,11 @@ func _emit_all_resources() -> void:
 	for resource_type in resources.keys():
 		var entry = resources[resource_type]
 		emit_signal("resource_changed", resource_type, entry.get("current", 0), entry.get("max", 0))
+
+
+func _get_status_id(status: Variant) -> String:
+	if status is StatusEffect:
+		return status.id
+	if status is Dictionary:
+		return status.get("id", "")
+	return ""
