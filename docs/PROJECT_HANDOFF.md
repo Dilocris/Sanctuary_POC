@@ -1,7 +1,7 @@
 # Project Handoff - Agent Swap Complete
 
 ## Date: 2026-02-02
-## Status: Phase 3 Logic Implemented (Verification Harness Active)
+## Status: Phase 3 Logic Implemented + Phase 4 UI Scaffolding In Progress
 
 ### 1. Completed Features
 - **Ludwig Von Tannhauser**:
@@ -18,6 +18,9 @@
   - Full party loop (Kairus, Ludwig, Ninos, Catraca) vs Marcus Gelt.
   - Active Status Effects display UI.
   - Interactive loop demonstrating all new abilities.
+- **Phase 4 UI Scaffolding**:
+  - `BattleMenu` + `TargetCursor` scenes/scripts added.
+  - `battle_scene.gd` now drives player turns via menu/target selection.
 
 ### 2. File Manifest
 - `scripts/action_ids.gd`: Added IDs for all Phase 3 actions.
@@ -27,11 +30,15 @@
 - `scripts/status_tags.gd`: Verified `STAT_BUFF` vs `BUFF` (Canonical is `STAT_BUFF`).
 - `scripts/battle_manager.gd`: Implemented execution logic for all new ActionIDs.
 - `scripts/battle_scene.gd`: Updated `_handle_turn` with specific logic for each character class.
+- `scenes/ui/battle_menu.tscn` + `scripts/ui/battle_menu.gd`: Menu UI + input handling.
+- `scenes/ui/target_cursor.tscn` + `scripts/ui/target_cursor.gd`: Target selection cursor.
+- `docs/IMPLEMENTATION_PLAN_PHASE_4.md`: Menu/targeting plan.
 
 ### 3. Known Issues / Next Steps
 - **Catraca Mage Armor**: In the latest smoke test, Mage Armor status didn't appear on the UI. Verify if it was cast (logic checks `if not has_status`).
 - **AoE Tweaks**: Fireball currently hits specific target list; need to implement true targeting selection UI in Phase 4.
 - **Inspiration Logic**: Currently just logs consumption; needs hook into `AttackResult` calculation for the *next* attack.
+- **Menu-Driven Flow**: Battle loop now depends on menu selection. Ensure input mapping exists for `ui_up/down/left/right/accept/cancel`.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

@@ -1,4 +1,4 @@
-extends Node
+extends Node2D
 class_name Character
 
 signal hp_changed(current: int, max: int)
