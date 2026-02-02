@@ -44,6 +44,7 @@
 - **Metamagic**: Quicken/Twin selection is wired; Twin targeting UI and Quicken second-action guardrails need refinement.
 - **Limit Gauge**: Limit bar is visible, but no Limit Break actions wired yet.
 - **Resource Gating**: Menu now disables actions when resources are insufficient and shows a reason on selection.
+- **Twin Targeting**: Added DOUBLE-target selection mode for pending Twin Spell (requires 2 targets).
 - **Targeting**: Menu selection now determines target mode/pool from action tags (SELF/SINGLE/ALL_*).
 - **Targeting Feedback**: Target cursor now indicates ALL-target mode and centers over the target group.
 - **Battle Log**: Added an on-screen log panel (top-left, smaller font) showing recent messages plus effect results.

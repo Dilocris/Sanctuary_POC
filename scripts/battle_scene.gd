@@ -358,6 +358,14 @@ func _on_menu_action_selected(action_id: String) -> void:
 	var tags = template_action.get("tags", [])
 	var target_mode = _determine_target_mode(tags)
 	var target_pool = _determine_target_pool(tags, action_id)
+	if target_mode == "SINGLE":
+		var pending_meta = battle_manager.peek_metamagic(active_player_id)
+		if pending_meta == "TWIN":
+			if target_pool.size() < 2:
+				message_log("Twin Spell requires 2+ targets.")
+				battle_menu.visible = true
+				return
+			target_mode = "DOUBLE"
 	
 	if target_pool.is_empty() and target_mode != "SELF":
 		message_log("No valid targets.")
@@ -368,6 +376,9 @@ func _on_menu_action_selected(action_id: String) -> void:
 		_enqueue_and_execute(action_id, [active_player_id])
 	elif target_mode == "ALL":
 		target_cursor.start_selection(target_pool, "ALL")
+		current_pending_action_id = action_id
+	elif target_mode == "DOUBLE":
+		target_cursor.start_selection(target_pool, "DOUBLE")
 		current_pending_action_id = action_id
 	else:
 		current_pending_action_id = action_id

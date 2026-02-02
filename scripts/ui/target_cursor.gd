@@ -8,6 +8,7 @@ var current_index: int = 0
 var is_active: bool = false
 var selector_mode: String = "SINGLE" # SINGLE, ALL, SELF
 var mode_label: Label
+var selected_ids: Array = []
 
 func _ready() -> void:
 	visible = false
@@ -26,9 +27,14 @@ func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 		return
 	
 	current_index = 0
+	selected_ids.clear()
 	is_active = true
 	visible = true
-	mode_label.visible = selector_mode == "ALL"
+	mode_label.visible = selector_mode == "ALL" or selector_mode == "DOUBLE"
+	if selector_mode == "DOUBLE":
+		mode_label.text = "DOUBLE"
+	else:
+		mode_label.text = "ALL"
 	_update_position()
 
 
@@ -86,19 +92,31 @@ func _update_position() -> void:
 		print("Cursor targeting: ", target.name) 
 
 func _confirm_selection() -> void:
-	is_active = false
-	visible = false
 	if selector_mode == "ALL":
-		# Return all IDs
+		is_active = false
+		visible = false
 		var ids = []
 		for t in valid_targets:
 			ids.append(t.id)
 		emit_signal("target_selected", ids)
-	else:
-		# Single Target
-		emit_signal("target_selected", [valid_targets[current_index].id])
+		return
+	if selector_mode == "DOUBLE":
+		var current_id = valid_targets[current_index].id
+		if selected_ids.has(current_id):
+			return
+		selected_ids.append(current_id)
+		if selected_ids.size() >= 2:
+			is_active = false
+			visible = false
+			emit_signal("target_selected", selected_ids)
+		return
+	# Single Target
+	is_active = false
+	visible = false
+	emit_signal("target_selected", [valid_targets[current_index].id])
 
 func _cancel_selection() -> void:
 	is_active = false
 	visible = false
+	selected_ids.clear()
 	emit_signal("selection_canceled")

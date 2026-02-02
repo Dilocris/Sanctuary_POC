@@ -541,6 +541,14 @@ func consume_metamagic(actor_id: String) -> String:
 	return meta
 
 
+func peek_metamagic(actor_id: String) -> String:
+	if not battle_state.flags.has("metamagic"):
+		return ""
+	if not battle_state.flags.metamagic.has(actor_id):
+		return ""
+	return battle_state.flags.metamagic[actor_id]
+
+
 func set_phase(new_phase: int) -> void:
 	if battle_state.phase == new_phase:
 		return
