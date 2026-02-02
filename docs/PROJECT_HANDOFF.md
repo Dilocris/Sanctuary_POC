@@ -21,6 +21,8 @@
 - **Phase 4 UI Scaffolding**:
   - `BattleMenu` + `TargetCursor` scenes/scripts added.
   - `battle_scene.gd` now drives player turns via menu/target selection.
+  - Battle log panel (top-left) shows recent messages + effect results with turn separators.
+  - Limit gauge bar displayed per character in party panel.
 
 ### 2. File Manifest
 - `scripts/action_ids.gd`: Added IDs for all Phase 3 actions.
@@ -39,6 +41,14 @@
 - **AoE Tweaks**: Fireball currently hits specific target list; need to implement true targeting selection UI in Phase 4.
 - **Inspiration Logic**: Currently just logs consumption; needs hook into `AttackResult` calculation for the *next* attack.
 - **Menu-Driven Flow**: Battle loop now depends on menu selection. Ensure input mapping exists for `ui_up/down/left/right/accept/cancel`.
+- **Metamagic**: Quicken/Twin selection is wired; Twin targeting UI and Quicken second-action guardrails need refinement.
+- **Limit Gauge**: Limit bar is visible, but no Limit Break actions wired yet.
+- **Targeting**: Menu selection now determines target mode/pool from action tags (SELF/SINGLE/ALL_*).
+- **Targeting Feedback**: Target cursor now indicates ALL-target mode and centers over the target group.
+- **Battle Log**: Added an on-screen log panel (top-left, smaller font) showing recent messages plus effect results.
+- **Targeting Rules**: Menu targeting now relies solely on action tags; SELF actions no longer invoke the cursor.
+- **Metamagic**: Catraca now has a Metamagic submenu (Quicken/Twin) that routes into Magic.
+- **Limit Gauge**: Added per-character limit gauge tracking and a small UI bar in the party panel.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

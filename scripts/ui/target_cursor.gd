@@ -7,9 +7,15 @@ var valid_targets: Array = []
 var current_index: int = 0
 var is_active: bool = false
 var selector_mode: String = "SINGLE" # SINGLE, ALL, SELF
+var mode_label: Label
 
 func _ready() -> void:
 	visible = false
+	mode_label = Label.new()
+	mode_label.text = "ALL"
+	mode_label.visible = false
+	mode_label.position = Vector2(-10, -90)
+	add_child(mode_label)
 
 func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 	valid_targets = targets
@@ -22,6 +28,7 @@ func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 	current_index = 0
 	is_active = true
 	visible = true
+	mode_label.visible = selector_mode == "ALL"
 	_update_position()
 
 func _input(event: InputEvent) -> void:
@@ -47,6 +54,17 @@ func _update_position() -> void:
 	# For simplicity in Phase 4 POC, we just point to the "primary" target (index 0 or current)
 	# even if we select all.
 	
+	if selector_mode == "ALL":
+		var sum = Vector2.ZERO
+		var count = 0
+		for t in valid_targets:
+			if t is Node2D:
+				sum += t.global_position
+				count += 1
+		if count > 0:
+			global_position = (sum / float(count)) + Vector2(0, -50)
+			return
+
 	var target = valid_targets[current_index]
 	# Assuming target is a Node2D/Node3D with a position. 
 	# In our harness, Characters are Nodes. If they don't have position, we might need a workaround.

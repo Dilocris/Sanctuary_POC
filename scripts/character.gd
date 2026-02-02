@@ -24,6 +24,8 @@ var hp_current: int = 1
 var mp_current: int = 0
 var resources: Dictionary = {} # Example: {"ki": {"current": 0, "max": 0}}
 var status_effects: Array = []
+var limit_gauge: int = 0
+const LIMIT_GAUGE_MAX := 100
 
 
 func setup(data: Dictionary) -> void:
@@ -35,6 +37,7 @@ func setup(data: Dictionary) -> void:
 	mp_current = data.get("mp_current", stats["mp_max"])
 	resources = data.get("resources", resources)
 	status_effects = data.get("status_effects", status_effects)
+	limit_gauge = data.get("limit_gauge", limit_gauge)
 
 	_emit_all_resources()
 	_emit_core_stats()
@@ -144,6 +147,12 @@ func set_resource_current(resource_type: String, value: int) -> void:
 	var max_val = resources[resource_type].get("max", 0)
 	resources[resource_type]["current"] = clamp(value, 0, max_val)
 	emit_signal("resource_changed", resource_type, resources[resource_type]["current"], max_val)
+
+
+func add_limit_gauge(amount: int) -> void:
+	if amount <= 0:
+		return
+	limit_gauge = clamp(limit_gauge + amount, 0, LIMIT_GAUGE_MAX)
 
 
 func _merge_stats(overrides: Dictionary) -> Dictionary:

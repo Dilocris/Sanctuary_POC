@@ -10,7 +10,10 @@ var status_effects_display: Label # Renamed to fit purpose
 var turn_order_display: Label # Visible turn order at top
 var combat_log_display: Label # Toast for battle messages
 var boss_hp_label: Label # New Boss HP Bar
+var battle_log_panel: RichTextLabel
 var demo_running: bool = false
+var pending_effect_messages: Array = []
+var last_logged_turn_id: String = ""
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
@@ -167,6 +170,7 @@ func _on_message_added(text: String) -> void:
 		debug_log.add_text(text + "\n")
 	if combat_log_display:
 		combat_log_display.text = text
+	_update_battle_log()
 
 func _on_turn_order_updated(order: Array) -> void:
 	# Update general status label if we want to track it
@@ -239,23 +243,28 @@ func _on_action_executed(result: Dictionary) -> void:
 			var dmg = payload["damage"]
 			if target:
 				_create_floating_text(target.position, str(dmg), Color.RED)
+			pending_effect_messages.append("Damage: " + str(dmg))
 				
 		# Handle Healing
 		if payload.has("healed"):
 			var heal = payload["healed"]
 			if target:
 				_create_floating_text(target.position, str(heal), Color.GREEN)
+			pending_effect_messages.append("Heal: " + str(heal))
 				
 		# Handle Status/Buffs (Simplified)
 		if payload.has("buff"):
 			if target: # Self buff usually
 				_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
+			pending_effect_messages.append("Buff: " + str(payload["buff"]))
 		elif payload.has("debuff"):
 			if target:
 				_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
+			pending_effect_messages.append("Debuff: " + str(payload["debuff"]))
 		elif payload.has("stun_applied") and payload["stun_applied"]:
 			if target:
 				_create_floating_text(target.position, "STUNNED", Color.YELLOW)
+			pending_effect_messages.append("Status: STUN")
 				
 	# Pass to log logic...
 	pass
@@ -333,37 +342,24 @@ func _execute_enemy_turn(actor: Boss) -> void:
 
 func _on_menu_action_selected(action_id: String) -> void:
 	battle_menu.visible = false
+	var template_action = ActionFactory.create_action(action_id, active_player_id, [])
+	var tags = template_action.get("tags", [])
+	var target_mode = _determine_target_mode(tags)
+	var target_pool = _determine_target_pool(tags, action_id)
 	
-	# Determine targeting needed
-	# For POC, hardcode checks based on Action ID pattern or simply try to get logic
-	# Ideally ActionFactory or tags tells us.
-	# Simplification:
-	if action_id == ActionIds.SKIP_TURN or action_id == ActionIds.LUD_GUARD_STANCE or action_id == ActionIds.KAI_FIRE_IMBUE or action_id == ActionIds.CAT_MAGE_ARMOR:
-		# Self/No target
+	if target_pool.is_empty() and target_mode != "SELF":
+		message_log("No valid targets.")
+		battle_menu.visible = true
+		return
+
+	if target_mode == "SELF":
 		_enqueue_and_execute(action_id, [active_player_id])
-	elif action_id == ActionIds.NINOS_BLESS or action_id == ActionIds.CAT_FIREBALL:
-		# Multi-target / All
-		# For Fireball/Bless, let's select ALL of opposite side or same side
-		# Just trigger cursor with ALL mode
-		var targets = []
-		var mode = "ALL"
-		if action_id == ActionIds.NINOS_BLESS:
-			targets = battle_manager.battle_state.party
-		else:
-			targets = battle_manager.battle_state.enemies
-		target_cursor.start_selection(targets, "ALL") # Cursor handles "ALL" logic (returns all IDs on confirm)
-		current_pending_action_id = action_id # Need to store this state!
-	else:
-		# Single Target
-		# Determine if Help (Ally) or Harm (Enemy)
-		var targets = []
-		if "healing" in action_id or "inspire" in action_id or "rally" in action_id:
-			targets = battle_manager.battle_state.party
-		else:
-			targets = battle_manager.battle_state.enemies
-		
+	elif target_mode == "ALL":
+		target_cursor.start_selection(target_pool, "ALL")
 		current_pending_action_id = action_id
-		target_cursor.start_selection(targets, "SINGLE")
+	else:
+		current_pending_action_id = action_id
+		target_cursor.start_selection(target_pool, "SINGLE")
 
 
 var current_pending_action_id = ""
@@ -389,15 +385,41 @@ func _enqueue_and_execute(action_id: String, target_ids: Array) -> void:
 	battle_manager.enqueue_action(action)
 	_execute_next_action()
 
+
+func _determine_target_mode(tags: Array) -> String:
+	if tags.has(ActionTags.SELF):
+		return "SELF"
+	if tags.has(ActionTags.ALL_ENEMIES) or tags.has(ActionTags.ALL_ALLIES):
+		return "ALL"
+	return "SINGLE"
+
+
+func _determine_target_pool(tags: Array, action_id: String) -> Array:
+	if tags.has(ActionTags.ALL_ALLIES) or tags.has(ActionTags.BUFF) or tags.has(ActionTags.HEALING) or tags.has(ActionTags.SELF):
+		return battle_manager.battle_state.party
+	if tags.has(ActionTags.ALL_ENEMIES) or tags.has(ActionTags.PHYSICAL) or tags.has(ActionTags.MAGICAL):
+		return battle_manager.battle_state.enemies
+	return battle_manager.battle_state.enemies
+
 func _execute_next_action() -> void:
 	var result = battle_manager.process_next_action()
 	var payload = result.get("payload", result)
 	message_log("Action Result: " + str(payload))
+	if payload.get("metamagic", "") != "":
+		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
+		if actor_meta:
+			message_log("Metamagic set: " + str(payload.get("metamagic", "")))
+			battle_menu.open_magic_submenu()
+			return
 	
 	# End of turn cleanup
 	var actor = battle_manager.get_actor_by_id(active_player_id)
-	if actor:
+	if actor and not payload.get("quicken", false):
 		battle_manager.process_end_of_turn_effects(actor)
+	if payload.get("quicken", false) and actor and actor.id == "catraca":
+		message_log("Quicken: extra action!")
+		battle_menu.setup(actor)
+		return
 	
 	if battle_over:
 		message_log("Battle Ended!")
@@ -426,32 +448,7 @@ func message_log(msg: String) -> void:
 		tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.0) # Fade out after 2s
 
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
-	# Quick mapper
-	var t1 = targets[0] if targets.size() > 0 else ""
-	match id:
-		ActionIds.BASIC_ATTACK: return ActionFactory.basic_attack(actor, t1)
-		ActionIds.SKIP_TURN: return ActionFactory.skip_turn(actor)
-		# Kairus
-		ActionIds.KAI_FLURRY: return ActionFactory.kairus_flurry(actor, t1)
-		ActionIds.KAI_STUN_STRIKE: return ActionFactory.kairus_stunning_strike(actor, t1)
-		ActionIds.KAI_FIRE_IMBUE: return ActionFactory.kairus_fire_imbue(actor)
-		# Ludwig
-		ActionIds.LUD_GUARD_STANCE: return ActionFactory.ludwig_guard_stance(actor)
-		ActionIds.LUD_LUNGING: return ActionFactory.ludwig_lunging_attack(actor, t1)
-		ActionIds.LUD_PRECISION: return ActionFactory.ludwig_precision_strike(actor, t1)
-		ActionIds.LUD_SHIELD_BASH: return ActionFactory.ludwig_shield_bash(actor, t1)
-		ActionIds.LUD_RALLY: return ActionFactory.ludwig_rally(actor, t1)
-		# Ninos
-		ActionIds.NINOS_BLESS: return ActionFactory.ninos_bless(actor, targets)
-		ActionIds.NINOS_HEALING_WORD: return ActionFactory.ninos_healing_word(actor, t1)
-		ActionIds.NINOS_VICIOUS_MOCKERY: return ActionFactory.ninos_vicious_mockery(actor, t1)
-		ActionIds.NINOS_INSPIRE_ATTACK: return ActionFactory.ninos_inspire_attack(actor, t1)
-		# Catraca
-		ActionIds.CAT_MAGE_ARMOR: return ActionFactory.catraca_mage_armor(actor)
-		ActionIds.CAT_FIREBALL: return ActionFactory.catraca_fireball(actor, targets)
-		ActionIds.CAT_FIRE_BOLT: return ActionFactory.catraca_fire_bolt(actor, t1)
-		
-	return ActionFactory.basic_attack(actor, t1) # Fallback
+	return ActionFactory.create_action(id, actor, targets)
 
 # --- UI Construction ---
 func _setup_debug_ui() -> void:
@@ -525,6 +522,15 @@ func _setup_game_ui() -> void:
 	boss_hp_label.text = "Boss HP"
 	add_child(boss_hp_label)
 
+	# Battle Log Panel (Left side)
+	battle_log_panel = RichTextLabel.new()
+	battle_log_panel.position = Vector2(10, 10)
+	battle_log_panel.size = Vector2(320, 160)
+	battle_log_panel.scroll_active = false
+	battle_log_panel.scroll_following = true
+	battle_log_panel.add_theme_font_size_override("normal_font_size", 12)
+	add_child(battle_log_panel)
+
 
 func _update_status_label(lines: Array) -> void:
 	# Update both debug log and game UI
@@ -550,23 +556,32 @@ func _update_status_label(lines: Array) -> void:
 			
 			var mp_lbl = Label.new()
 			if actor.stats["mp_max"] > 0:
-				mp_lbl.text = "MP: %d/%d" % [actor.mp_current, actor.stats["mp_max"]]
-			elif actor.id == "ludwig":
-				mp_lbl.text = "SD: %d" % actor.get_resource_current("superiority_dice")
-			elif actor.id == "kairus":
-				mp_lbl.text = "Ki: %d" % actor.get_resource_current("ki")
+				mp_lbl.text = "MP:%d/%d" % [actor.mp_current, actor.stats["mp_max"]]
+			else:
+				mp_lbl.text = ""
 			
-			# Check for other resources even if MP > 0 (e.g. Ninos/Catraca)
-			if actor.id == "ninos":
-				var res = actor.get_resource_current("bardic_inspiration")
-				mp_lbl.text += " | BI: %d" % res
-			elif actor.id == "catraca":
-				var res = actor.get_resource_current("sorcery_points")
-				mp_lbl.text += " | SP: %d" % res
+			# Append unique resources (short labels)
+			if actor.resources.has("ki"):
+				mp_lbl.text += " | Ki:%d" % actor.get_resource_current("ki")
+			if actor.resources.has("superiority_dice"):
+				mp_lbl.text += " | SD:%d" % actor.get_resource_current("superiority_dice")
+			if actor.resources.has("bardic_inspiration"):
+				mp_lbl.text += " | BI:%d" % actor.get_resource_current("bardic_inspiration")
+			if actor.resources.has("sorcery_points"):
+				mp_lbl.text += " | SP:%d" % actor.get_resource_current("sorcery_points")
+			mp_lbl.text += " | LB:%d%%" % actor.limit_gauge
+			
+			var lb_bar = ProgressBar.new()
+			lb_bar.min_value = 0
+			lb_bar.max_value = 100
+			lb_bar.value = actor.limit_gauge
+			lb_bar.custom_minimum_size = Vector2(120, 8)
+			lb_bar.show_percentage = false
 			
 			hbox.add_child(name_lbl)
 			hbox.add_child(hp_lbl)
 			hbox.add_child(mp_lbl)
+			hbox.add_child(lb_bar)
 			party_status_panel.add_child(hbox)
 
 	# Update Boss Status (Simple Label above boss if exists or separate panel)
@@ -582,6 +597,33 @@ func _update_status_label(lines: Array) -> void:
 			
 	# Update Status Effects Label
 	_update_status_effects_text()
+
+
+func _update_battle_log() -> void:
+	if battle_log_panel == null:
+		return
+	var lines = battle_manager.battle_state.get("message_log", [])
+	var start = max(0, lines.size() - 6)
+	var effect_lines = []
+	if pending_effect_messages.size() > 0:
+		effect_lines = pending_effect_messages.duplicate()
+		pending_effect_messages.clear()
+	var combined = lines.slice(start, lines.size()) + effect_lines
+	var turn_header = _get_turn_header()
+	if not turn_header.is_empty():
+		combined.append(turn_header)
+	combined.append("---------------")
+	battle_log_panel.text = "Log:\n" + "\n".join(combined)
+
+
+func _get_turn_header() -> String:
+	var turn_id = str(battle_manager.battle_state.get("turn_count", 0)) + ":" + \
+		str(battle_manager.battle_state.get("active_character_id", ""))
+	if turn_id == last_logged_turn_id:
+		return ""
+	last_logged_turn_id = turn_id
+	return "---- Turn " + str(battle_manager.battle_state.get("turn_count", 0)) + \
+		" (" + str(battle_manager.battle_state.get("active_character_id", "")) + ") ----"
 
 
 func _update_status_effects_text() -> void:

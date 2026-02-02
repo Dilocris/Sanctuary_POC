@@ -29,6 +29,11 @@ func setup(actor: Character) -> void:
 	_build_main_menu()
 	_update_selection()
 
+
+func open_magic_submenu() -> void:
+	current_state = MenuState.SUBMENU
+	_build_submenu("SKILL_SUB")
+
 func _build_main_menu() -> void:
 	menu_items.clear()
 	# Common Attack
@@ -43,7 +48,8 @@ func _build_main_menu() -> void:
 		"ninos":
 			menu_items.append({"label": "Abilities", "id": "SKILL_SUB", "desc": "Bardic spells and inspiration."})
 		"catraca":
-			menu_items.append({"label": "Magic", "id": "SKILL_SUB", "desc": "Sorcerous spells and metamagic."})
+			menu_items.append({"label": "Metamagic", "id": "META_SUB", "desc": "Sorcery modifiers (spend SP)."})
+			menu_items.append({"label": "Magic", "id": "SKILL_SUB", "desc": "Sorcerous spells."})
 	
 	# Common Defend/Guard
 	if active_actor.id == "ludwig":
@@ -81,6 +87,9 @@ func _build_submenu(category: String) -> void:
 				menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Cantrip: Fire damage."})
 				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP: AoE Fire damage."})
 				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP: Buff defense."})
+			elif category == "META_SUB":
+				menu_items.append({"label": "Quicken Spell", "id": ActionIds.CAT_METAMAGIC_QUICKEN, "desc": "2 SP: Extra action after spell."})
+				menu_items.append({"label": "Twin Spell", "id": ActionIds.CAT_METAMAGIC_TWIN, "desc": "1 SP: Single spell hits 2 targets."})
 	
 	_render_menu_items()
 
@@ -135,10 +144,9 @@ func _handle_selection() -> void:
 	var item = menu_items[current_selection_index]
 	var id = item["id"]
 	
-	if id == "SKILL_SUB" or id == "ITEM_SUB":
-		if id == "SKILL_SUB":
-			current_state = MenuState.SUBMENU
-			_build_submenu(id)
+	if id == "SKILL_SUB" or id == "ITEM_SUB" or id == "META_SUB":
+		current_state = MenuState.SUBMENU
+		_build_submenu(id)
 	elif id == "ATTACK":
 		emit_signal("action_selected", ActionIds.BASIC_ATTACK)
 	elif id == "DEFEND":

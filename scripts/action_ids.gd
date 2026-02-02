@@ -22,5 +22,6 @@ const CAT_FIRE_BOLT := "catraca_fire_bolt"
 const CAT_FIREBALL := "catraca_fireball"
 const CAT_MAGE_ARMOR := "catraca_mage_armor"
 const CAT_MAGIC_MISSILE := "catraca_magic_missile"
-
+const CAT_METAMAGIC_QUICKEN := "catraca_metamagic_quicken"
+const CAT_METAMAGIC_TWIN := "catraca_metamagic_twin"
 

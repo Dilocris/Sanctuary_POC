@@ -1,6 +1,35 @@
 extends RefCounted
 class_name ActionFactory
 
+static func create_action(action_id: String, actor_id: String, targets: Array) -> Dictionary:
+	var t1 = targets[0] if targets.size() > 0 else ""
+	match action_id:
+		ActionIds.BASIC_ATTACK: return basic_attack(actor_id, t1)
+		ActionIds.SKIP_TURN: return skip_turn(actor_id)
+		# Kairus
+		ActionIds.KAI_FLURRY: return kairus_flurry(actor_id, t1)
+		ActionIds.KAI_STUN_STRIKE: return kairus_stunning_strike(actor_id, t1)
+		ActionIds.KAI_FIRE_IMBUE: return kairus_fire_imbue(actor_id)
+		# Ludwig
+		ActionIds.LUD_GUARD_STANCE: return ludwig_guard_stance(actor_id)
+		ActionIds.LUD_LUNGING: return ludwig_lunging_attack(actor_id, t1)
+		ActionIds.LUD_PRECISION: return ludwig_precision_strike(actor_id, t1)
+		ActionIds.LUD_SHIELD_BASH: return ludwig_shield_bash(actor_id, t1)
+		ActionIds.LUD_RALLY: return ludwig_rally(actor_id, t1)
+		# Ninos
+		ActionIds.NINOS_BLESS: return ninos_bless(actor_id, targets)
+		ActionIds.NINOS_HEALING_WORD: return ninos_healing_word(actor_id, t1)
+		ActionIds.NINOS_VICIOUS_MOCKERY: return ninos_vicious_mockery(actor_id, t1)
+		ActionIds.NINOS_INSPIRE_ATTACK: return ninos_inspire_attack(actor_id, t1)
+		# Catraca
+		ActionIds.CAT_MAGE_ARMOR: return catraca_mage_armor(actor_id)
+		ActionIds.CAT_FIREBALL: return catraca_fireball(actor_id, targets)
+		ActionIds.CAT_FIRE_BOLT: return catraca_fire_bolt(actor_id, t1)
+		ActionIds.CAT_METAMAGIC_QUICKEN: return catraca_metamagic_quicken(actor_id)
+		ActionIds.CAT_METAMAGIC_TWIN: return catraca_metamagic_twin(actor_id)
+		_:
+			return basic_attack(actor_id, t1)
+
 static func basic_attack(actor_id: String, target_id: String, multiplier: float = 1.0) -> Dictionary:
 	return {
 		"action_id": ActionIds.BASIC_ATTACK,
@@ -15,7 +44,8 @@ static func skip_turn(actor_id: String) -> Dictionary:
 	return {
 		"action_id": ActionIds.SKIP_TURN,
 		"actor_id": actor_id,
-		"targets": []
+		"targets": [],
+		"tags": [ActionTags.SELF]
 	}
 
 
@@ -190,4 +220,26 @@ static func catraca_mage_armor(actor_id: String) -> Dictionary:
 		"targets": [actor_id], # Self only
 		"mp_cost": 4,
 		"tags": [ActionTags.MAGICAL, ActionTags.BUFF, ActionTags.SELF]
+	}
+
+
+static func catraca_metamagic_quicken(actor_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.CAT_METAMAGIC_QUICKEN,
+		"actor_id": actor_id,
+		"targets": [actor_id],
+		"resource_type": "sorcery_points",
+		"resource_cost": 2,
+		"tags": [ActionTags.METAMAGIC, ActionTags.RESOURCE, ActionTags.SELF]
+	}
+
+
+static func catraca_metamagic_twin(actor_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.CAT_METAMAGIC_TWIN,
+		"actor_id": actor_id,
+		"targets": [actor_id],
+		"resource_type": "sorcery_points",
+		"resource_cost": 1,
+		"tags": [ActionTags.METAMAGIC, ActionTags.RESOURCE, ActionTags.SELF]
 	}

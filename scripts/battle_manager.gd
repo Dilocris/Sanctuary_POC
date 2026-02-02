@@ -39,7 +39,8 @@ func setup_state(party: Array, enemies: Array) -> void:
 	battle_state.action_log = []
 	battle_state.flags = {
 		"ludwig_second_wind_used": false,
-		"ninos_counterspell_used": false
+		"ninos_counterspell_used": false,
+		"metamagic": {}
 	}
 
 
@@ -112,7 +113,7 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 		return ActionResult.new(false, "target_ko").to_dict()
 
 	var damage = DamageCalculator.calculate_physical_damage(attacker, target, multiplier)
-	target.apply_damage(damage)
+	_apply_damage_with_limit(attacker, target, damage)
 	add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
 	return ActionResult.new(true, "", {
 		"damage": damage,
@@ -225,9 +226,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var total_dmg = base_result.get("payload", {}).get("damage", 0) + bonus_dmg
 			var target_lung = get_actor_by_id(targets[0])
 			if target_lung != null:
-				# Re-apply damage to account for bonus properly (a bit hacky, but consistent with current simple pipeline)
-				# Better way: execute_basic_attack should return damage before applying, but for now we apply difference
-				target_lung.apply_damage(bonus_dmg)
+				_apply_damage_with_limit(actor, target_lung, bonus_dmg)
 				add_message(actor.display_name + " lunges! Bonus " + str(bonus_dmg) + " damage!")
 			return ActionResult.new(true, "", {
 				"damage": total_dmg,
@@ -246,7 +245,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var total_prec = base_prec.get("payload", {}).get("damage", 0) + bonus_prec
 			var target_prec = get_actor_by_id(targets[0])
 			if target_prec != null:
-				target_prec.apply_damage(bonus_prec)
+				_apply_damage_with_limit(actor, target_prec, bonus_prec)
 				add_message(actor.display_name + " strikes precisely! Bonus " + str(bonus_prec) + " damage!")
 			return ActionResult.new(true, "", {
 				"damage": total_prec,
@@ -311,7 +310,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var target_vm = get_actor_by_id(targets[0])
 			var damage_vm = 15 + (int(actor.stats.mag * 0.3) if actor else 0)
 			if target_vm != null:
-				target_vm.apply_damage(damage_vm)
+				_apply_damage_with_limit(actor, target_vm, damage_vm)
 				target_vm.add_status(StatusEffectFactory.atk_down())
 				add_message(actor.display_name + " mocks " + target_vm.display_name + "! " + str(damage_vm) + " dmg + ATK Down!")
 			return ActionResult.new(true, "", {
@@ -362,21 +361,29 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action) # MP cost 0 but standard call
 			var target_fb = get_actor_by_id(targets[0])
+			var meta = consume_metamagic(actor_id)
 			var dmg_fb = randi_range(1, 10) + (int(actor.stats.mag * 0.5) if actor else 0)
 			if target_fb != null:
-				target_fb.apply_damage(dmg_fb)
+				_apply_damage_with_limit(actor, target_fb, dmg_fb)
 				add_message(actor.display_name + " casts Fire Bolt at " + target_fb.display_name + "! " + str(dmg_fb) + " Fire dmg")
+				if meta == "TWIN":
+					var extra = _get_additional_enemy_target(targets[0])
+					if extra != null:
+						_apply_damage_with_limit(actor, extra, dmg_fb)
+						add_message("Twin Spell hits " + extra.display_name + " for " + str(dmg_fb) + "!")
 			return ActionResult.new(true, "", {
 				"damage": dmg_fb,
 				"element": "fire",
 				"attacker_id": actor_id,
-				"target_id": targets[0]
+				"target_id": targets[0],
+				"quicken": meta == "QUICKEN"
 			}).to_dict()
 		ActionIds.CAT_FIREBALL:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
+			var meta_fb = consume_metamagic(actor_id)
 			var total_dmg_fireball = 0
 			var hit_targets = []
 			for t_id in targets:
@@ -385,17 +392,19 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					var dmg_val = randi_range(8, 64) # 8d6 roughly
 					# For poc, simple formula:
 					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
-					t_fireball.apply_damage(dmg_val)
+					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
 					total_dmg_fireball += dmg_val
 			add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
 			return ActionResult.new(true, "", {
 				"damage_total": total_dmg_fireball,
 				"targets_hit": hit_targets.size(),
-				"attacker_id": actor_id
+				"attacker_id": actor_id,
+				"quicken": meta_fb == "QUICKEN"
 			}).to_dict()
 		ActionIds.CAT_MAGE_ARMOR:
 			if actor != null:
+				var meta_ma = consume_metamagic(actor_id)
 				if actor.has_status(StatusEffectIds.MAGE_ARMOR):
 					add_message(actor.display_name + " already has Mage Armor.")
 					return ActionResult.new(false, "already_active").to_dict()
@@ -404,8 +413,23 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				add_message(actor.display_name + " casts Mage Armor!")
 				return ActionResult.new(true, "", {
 					"buff": "mage_armor",
-					"attacker_id": actor_id
+					"attacker_id": actor_id,
+					"quicken": meta_ma == "QUICKEN"
 				}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.CAT_METAMAGIC_QUICKEN:
+			if actor != null:
+				actor.consume_resources(action)
+				_set_metamagic(actor_id, "QUICKEN")
+				add_message(actor.display_name + " prepares Quicken Spell.")
+				return ActionResult.new(true, "", {"metamagic": "quicken"}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.CAT_METAMAGIC_TWIN:
+			if actor != null:
+				actor.consume_resources(action)
+				_set_metamagic(actor_id, "TWIN")
+				add_message(actor.display_name + " prepares Twin Spell.")
+				return ActionResult.new(true, "", {"metamagic": "twin"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
 
 		_:
@@ -451,6 +475,7 @@ func process_end_of_turn_effects(actor: Character) -> void:
 		var value = _get_status_value(status)
 		if tags.has("DOT"):
 			actor.apply_damage(value)
+			_update_limit_gauges(null, actor, value)
 			add_message(actor.display_name + " takes " + str(value) + " damage.")
 		if tags.has("HOT"):
 			actor.heal(value)
@@ -477,6 +502,43 @@ func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multi
 		var result = execute_basic_attack(attacker_id, target_id, multiplier)
 		total += result.get("payload", {}).get("damage", 0)
 	return total
+
+
+func _get_additional_enemy_target(exclude_id: String) -> Character:
+	for enemy in get_alive_enemies():
+		if enemy.id != exclude_id:
+			return enemy
+	return null
+
+
+func _apply_damage_with_limit(attacker: Character, target: Character, amount: int) -> void:
+	if target == null:
+		return
+	target.apply_damage(amount)
+	_update_limit_gauges(attacker, target, amount)
+
+
+func _update_limit_gauges(attacker: Character, target: Character, amount: int) -> void:
+	if amount <= 0:
+		return
+	if attacker != null:
+		attacker.add_limit_gauge(int(floor(amount / 10.0)))
+	if target != null:
+		target.add_limit_gauge(int(floor(amount / 5.0)))
+
+
+func _set_metamagic(actor_id: String, meta: String) -> void:
+	battle_state.flags.metamagic[actor_id] = meta
+
+
+func consume_metamagic(actor_id: String) -> String:
+	if not battle_state.flags.has("metamagic"):
+		return ""
+	if not battle_state.flags.metamagic.has(actor_id):
+		return ""
+	var meta = battle_state.flags.metamagic[actor_id]
+	battle_state.flags.metamagic.erase(actor_id)
+	return meta
 
 
 func set_phase(new_phase: int) -> void:
