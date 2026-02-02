@@ -31,6 +31,12 @@ func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 	mode_label.visible = selector_mode == "ALL"
 	_update_position()
 
+
+func deactivate() -> void:
+	is_active = false
+	visible = false
+	mode_label.visible = false
+
 func _input(event: InputEvent) -> void:
 	if not is_active:
 		return

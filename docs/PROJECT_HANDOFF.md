@@ -43,12 +43,15 @@
 - **Menu-Driven Flow**: Battle loop now depends on menu selection. Ensure input mapping exists for `ui_up/down/left/right/accept/cancel`.
 - **Metamagic**: Quicken/Twin selection is wired; Twin targeting UI and Quicken second-action guardrails need refinement.
 - **Limit Gauge**: Limit bar is visible, but no Limit Break actions wired yet.
+- **Resource Gating**: Menu now disables actions when resources are insufficient and shows a reason on selection.
 - **Targeting**: Menu selection now determines target mode/pool from action tags (SELF/SINGLE/ALL_*).
 - **Targeting Feedback**: Target cursor now indicates ALL-target mode and centers over the target group.
 - **Battle Log**: Added an on-screen log panel (top-left, smaller font) showing recent messages plus effect results.
 - **Targeting Rules**: Menu targeting now relies solely on action tags; SELF actions no longer invoke the cursor.
 - **Metamagic**: Catraca now has a Metamagic submenu (Quicken/Twin) that routes into Magic.
 - **Limit Gauge**: Added per-character limit gauge tracking and a small UI bar in the party panel.
+- **Input Lock**: Player input is disabled during enemy turns; target cursor deactivates when not selecting.
+- **Readability**: Increased turn pacing and combat log fade time.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

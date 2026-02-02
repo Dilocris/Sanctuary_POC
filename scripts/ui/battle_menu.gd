@@ -3,6 +3,8 @@ class_name BattleMenu
 
 signal action_selected(action_id: String)
 signal menu_canceled
+signal action_blocked(reason: String)
+signal menu_changed(menu_items: Array)
 
 enum MenuState { MAIN, SUBMENU, TARGETING, DISABLED }
 var current_state = MenuState.DISABLED
@@ -17,6 +19,8 @@ var action_list_container: VBoxContainer
 @onready var description_label = $DescriptionPanel/Label
 
 var menu_items: Array = []
+var disabled_actions: Dictionary = {}
+var input_block_until_ms: int = 0
 
 func _ready() -> void:
 	visible = false
@@ -28,11 +32,23 @@ func setup(actor: Character) -> void:
 	visible = true
 	_build_main_menu()
 	_update_selection()
+	_block_input(150)
+
+
+func set_enabled(enabled: bool) -> void:
+	if enabled:
+		current_state = MenuState.MAIN
+		visible = true
+		_block_input(100)
+	else:
+		current_state = MenuState.DISABLED
+		visible = false
 
 
 func open_magic_submenu() -> void:
 	current_state = MenuState.SUBMENU
 	_build_submenu("SKILL_SUB")
+	_block_input(150)
 
 func _build_main_menu() -> void:
 	menu_items.clear()
@@ -99,29 +115,47 @@ func _render_menu_items() -> void:
 	
 	for item in menu_items:
 		var label = Label.new()
-		label.text = item["label"]
+		var label_text = item["label"]
+		if disabled_actions.has(item["id"]):
+			label_text += " (X)"
+		label.text = label_text
 		action_list_node.add_child(label)
 	
-	current_selection_index = 0
+	if menu_items.is_empty():
+		current_selection_index = 0
+	else:
+		current_selection_index = clamp(current_selection_index, 0, menu_items.size() - 1)
 	_update_selection()
+	emit_signal("menu_changed", menu_items)
 
 func _update_selection() -> void:
 	if menu_items.is_empty(): 
 		description_label.text = ""
 		return
+	current_selection_index = clamp(current_selection_index, 0, menu_items.size() - 1)
 	
 	var idx = 0
 	for child in action_list_node.get_children():
+		if idx >= menu_items.size():
+			break
 		if idx == current_selection_index:
 			child.modulate = Color(1, 1, 0) # Highlight yellow
 		else:
-			child.modulate = Color(1, 1, 1)
+			var item_id = menu_items[idx].get("id", "")
+			if disabled_actions.has(item_id):
+				child.modulate = Color(0.6, 0.6, 0.6)
+			else:
+				child.modulate = Color(1, 1, 1)
 		idx += 1
 	
 	description_label.text = menu_items[current_selection_index].get("desc", "")
 
 func _input(event: InputEvent) -> void:
 	if not visible or current_state == MenuState.DISABLED:
+		return
+	if _is_input_blocked():
+		return
+	if menu_items.is_empty():
 		return
 	
 	if event.is_action_pressed("ui_down"):
@@ -143,10 +177,15 @@ func _input(event: InputEvent) -> void:
 func _handle_selection() -> void:
 	var item = menu_items[current_selection_index]
 	var id = item["id"]
+	if disabled_actions.has(id):
+		emit_signal("action_blocked", disabled_actions[id])
+		_block_input(150)
+		return
 	
 	if id == "SKILL_SUB" or id == "ITEM_SUB" or id == "META_SUB":
 		current_state = MenuState.SUBMENU
 		_build_submenu(id)
+		_block_input(150)
 	elif id == "ATTACK":
 		emit_signal("action_selected", ActionIds.BASIC_ATTACK)
 	elif id == "DEFEND":
@@ -156,3 +195,16 @@ func _handle_selection() -> void:
 	else:
 		# ID is likely a specific ActionId (e.g. KAI_FLURRY)
 		emit_signal("action_selected", id)
+
+
+func set_disabled_actions(map: Dictionary) -> void:
+	disabled_actions = map
+	_update_selection()
+
+
+func _block_input(ms: int) -> void:
+	input_block_until_ms = Time.get_ticks_msec() + ms
+
+
+func _is_input_blocked() -> bool:
+	return Time.get_ticks_msec() < input_block_until_ms

@@ -41,6 +41,8 @@ func _ready() -> void:
 	battle_menu = BattleMenuScene.instantiate()
 	add_child(battle_menu)
 	battle_menu.action_selected.connect(_on_menu_action_selected)
+	battle_menu.action_blocked.connect(_on_menu_action_blocked)
+	battle_menu.menu_changed.connect(_on_menu_changed)
 	# battle_menu.menu_canceled.connect(_on_menu_canceled) # Not implemented yet
 
 	target_cursor = TargetCursorScene.instantiate()
@@ -314,12 +316,17 @@ func _process_turn_loop() -> void:
 	if _is_party_member(actor_id):
 		state = "PLAYER_TURN"
 		message_log("Player turn: " + actor.display_name)
+		battle_menu.set_enabled(true)
 		battle_menu.setup(actor)
+		_update_menu_disables(actor)
+		target_cursor.deactivate()
 		# Wait for signal
 	else:
 		state = "ENEMY_TURN"
 		message_log("Enemy turn: " + actor.display_name)
-		await get_tree().create_timer(1.0).timeout
+		battle_menu.set_enabled(false)
+		target_cursor.deactivate()
+		await get_tree().create_timer(1.5).timeout
 		_execute_enemy_turn(actor)
 
 func _execute_enemy_turn(actor: Boss) -> void:
@@ -341,7 +348,12 @@ func _execute_enemy_turn(actor: Boss) -> void:
 
 
 func _on_menu_action_selected(action_id: String) -> void:
-	battle_menu.visible = false
+	var is_metamagic = action_id == ActionIds.CAT_METAMAGIC_QUICKEN or action_id == ActionIds.CAT_METAMAGIC_TWIN
+	if is_metamagic and action_id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
+		message_log("Twin Spell requires 2+ enemies.")
+		battle_menu.visible = true
+		return
+	battle_menu.visible = not is_metamagic
 	var template_action = ActionFactory.create_action(action_id, active_player_id, [])
 	var tags = template_action.get("tags", [])
 	var target_mode = _determine_target_mode(tags)
@@ -362,16 +374,30 @@ func _on_menu_action_selected(action_id: String) -> void:
 		target_cursor.start_selection(target_pool, "SINGLE")
 
 
+func _on_menu_action_blocked(reason: String) -> void:
+	message_log(reason)
+	battle_menu.visible = true
+
+
+func _on_menu_changed(_items: Array) -> void:
+	var actor = battle_manager.get_actor_by_id(active_player_id)
+	if actor:
+		_update_menu_disables(actor)
+
+
 var current_pending_action_id = ""
 
 func _on_target_selected(target_ids: Array) -> void:
 	# Enqueue the pending action with these targets
+	target_cursor.deactivate()
 	_enqueue_and_execute(current_pending_action_id, target_ids)
 
 func _on_target_canceled() -> void:
 	# Go back to menu
+	target_cursor.deactivate()
 	var actor = battle_manager.get_actor_by_id(active_player_id)
 	if actor:
+		battle_menu.set_enabled(true)
 		battle_menu.setup(actor)
 
 func _enqueue_and_execute(action_id: String, target_ids: Array) -> void:
@@ -401,6 +427,33 @@ func _determine_target_pool(tags: Array, action_id: String) -> Array:
 		return battle_manager.battle_state.enemies
 	return battle_manager.battle_state.enemies
 
+
+func _update_menu_disables(actor: Character) -> void:
+	var disabled: Dictionary = {}
+	for item in battle_menu.menu_items:
+		var id = item.get("id", "")
+		if id == "ATTACK" or id == "SKILL_SUB" or id == "ITEM_SUB" or id == "META_SUB" or id == "DEFEND" or id == "GUARD_TOGGLE":
+			continue
+		var action = ActionFactory.create_action(id, actor.id, [])
+		if action.get("resource_type", "") != "":
+			var cost = action.get("resource_cost", 0)
+			if actor.get_resource_current(action.resource_type) < cost:
+				disabled[id] = "Not enough " + action.resource_type.capitalize() + "."
+				continue
+		var mp_cost = action.get("mp_cost", 0)
+		if mp_cost > 0 and actor.mp_current < mp_cost:
+			disabled[id] = "Not enough MP."
+			continue
+		if id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
+			disabled[id] = "Requires 2+ enemies."
+			continue
+		var tags = action.get("tags", [])
+		var pool = _determine_target_pool(tags, id)
+		if not tags.has(ActionTags.SELF) and pool.is_empty():
+			disabled[id] = "No valid targets."
+			continue
+	battle_menu.set_disabled_actions(disabled)
+
 func _execute_next_action() -> void:
 	var result = battle_manager.process_next_action()
 	var payload = result.get("payload", result)
@@ -409,7 +462,9 @@ func _execute_next_action() -> void:
 		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
 		if actor_meta:
 			message_log("Metamagic set: " + str(payload.get("metamagic", "")))
+			battle_menu.visible = true
 			battle_menu.open_magic_submenu()
+			_update_menu_disables(actor_meta)
 			return
 	
 	# End of turn cleanup
@@ -419,6 +474,7 @@ func _execute_next_action() -> void:
 	if payload.get("quicken", false) and actor and actor.id == "catraca":
 		message_log("Quicken: extra action!")
 		battle_menu.setup(actor)
+		_update_menu_disables(actor)
 		return
 	
 	if battle_over:
@@ -426,7 +482,7 @@ func _execute_next_action() -> void:
 		return
 		
 	battle_manager.advance_turn()
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.9).timeout
 	_process_turn_loop()
 
 func message_log(msg: String) -> void:
@@ -444,8 +500,8 @@ func message_log(msg: String) -> void:
 		# If not, let's add a visual "flash" or something.
 		var tween = create_tween()
 		combat_log_display.modulate.a = 1.0
-		tween.tween_interval(2.0)
-		tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.0) # Fade out after 2s
+		tween.tween_interval(3.0)
+		tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.5) # Fade out after 3s
 
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
 	return ActionFactory.create_action(id, actor, targets)
