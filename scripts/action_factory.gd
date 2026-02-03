@@ -27,6 +27,10 @@ static func create_action(action_id: String, actor_id: String, targets: Array) -
 		ActionIds.CAT_FIRE_BOLT: return catraca_fire_bolt(actor_id, t1)
 		ActionIds.CAT_METAMAGIC_QUICKEN: return catraca_metamagic_quicken(actor_id)
 		ActionIds.CAT_METAMAGIC_TWIN: return catraca_metamagic_twin(actor_id)
+		ActionIds.BOS_GREAXE_SLAM: return marcus_greataxe_slam(actor_id, t1)
+		ActionIds.BOS_TENDRIL_LASH: return marcus_tendril_lash(actor_id, t1)
+		ActionIds.BOS_BATTLE_ROAR: return marcus_battle_roar(actor_id)
+		ActionIds.BOS_COLLECTORS_GRASP: return marcus_collectors_grasp(actor_id, t1)
 		_:
 			return basic_attack(actor_id, t1)
 
@@ -242,4 +246,42 @@ static func catraca_metamagic_twin(actor_id: String) -> Dictionary:
 		"resource_type": "sorcery_points",
 		"resource_cost": 1,
 		"tags": [ActionTags.METAMAGIC, ActionTags.RESOURCE, ActionTags.SELF]
+	}
+
+
+static func marcus_greataxe_slam(actor_id: String, target_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.BOS_GREAXE_SLAM,
+		"actor_id": actor_id,
+		"targets": [target_id],
+		"multiplier": 1.2,
+		"tags": [ActionTags.PHYSICAL, ActionTags.SINGLE]
+	}
+
+
+static func marcus_tendril_lash(actor_id: String, target_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.BOS_TENDRIL_LASH,
+		"actor_id": actor_id,
+		"targets": [target_id],
+		"multiplier": 0.8,
+		"tags": [ActionTags.PHYSICAL, ActionTags.STATUS, ActionTags.SINGLE]
+	}
+
+
+static func marcus_battle_roar(actor_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.BOS_BATTLE_ROAR,
+		"actor_id": actor_id,
+		"targets": [actor_id],
+		"tags": [ActionTags.SELF, ActionTags.BUFF]
+	}
+
+
+static func marcus_collectors_grasp(actor_id: String, target_id: String) -> Dictionary:
+	return {
+		"action_id": ActionIds.BOS_COLLECTORS_GRASP,
+		"actor_id": actor_id,
+		"targets": [target_id],
+		"tags": [ActionTags.SINGLE]
 	}

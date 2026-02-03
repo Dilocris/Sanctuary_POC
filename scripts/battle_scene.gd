@@ -9,21 +9,40 @@ var party_status_panel: VBoxContainer
 var status_effects_display: Label # Renamed to fit purpose
 var turn_order_display: Label # Visible turn order at top
 var combat_log_display: Label # Toast for battle messages
-var boss_hp_label: Label # New Boss HP Bar
+var boss_hp_bar: ProgressBar
+var boss_hp_bar_label: Label
+var boss_hp_fill_style: StyleBoxFlat
 var battle_log_panel: RichTextLabel
 var demo_running: bool = false
 var pending_effect_messages: Array = []
 var last_logged_turn_id: String = ""
+var actor_sprites: Dictionary = {}
+var actor_name_labels: Dictionary = {}
+var input_cooldown_until_ms: int = 0
+var actor_idle_tweens: Dictionary = {}
+var actor_base_positions: Dictionary = {}
+var actor_action_tweens: Dictionary = {}
+var actor_shake_tweens: Dictionary = {}
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
 var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END
 var active_player_id = ""
 var battle_over: bool = false
-const ACTOR_Y_OFFSET := 0.0
-const BOSS_Y_OFFSET := 0.0
 const ACTOR_SCALE := 2.0
 const BOSS_SCALE := 2.0
+const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
+const INACTIVE_NAME_COLOR := Color(1, 1, 1)
+const ACTIVE_NAME_FONT_SIZE := 16
+const INACTIVE_NAME_FONT_SIZE := 13
+const LOWER_UI_TOP := 500
+const HERO_POSITIONS := {
+	"kairus": Vector2(735, 326),
+	"ludwig": Vector2(607, 250),
+	"ninos": Vector2(802, 208),
+	"catraca": Vector2(895, 280)
+}
+const BOSS_POSITION := Vector2(286, 248)
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
@@ -71,7 +90,7 @@ func _ready() -> void:
 			"display_name": "Kairus",
 			"stats": {"hp_max": 450, "mp_max": 60, "atk": 62, "def": 42, "mag": 28, "spd": 55},
 			"resources": {"ki": {"current": 6, "max": 6}},
-			"position": Vector2(735, 326),
+			"position": HERO_POSITIONS.kairus,
 			"color": Color(0.5, 0, 0.5) # Purple
 		}),
 		_make_character({
@@ -79,7 +98,7 @@ func _ready() -> void:
 			"display_name": "Ludwig",
 			"stats": {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34},
 			"resources": {"superiority_dice": {"current": 4, "max": 4}},
-			"position": Vector2(607, 250),
+			"position": HERO_POSITIONS.ludwig,
 			"color": Color.GRAY # Gray
 		}),
 		_make_character({
@@ -87,7 +106,7 @@ func _ready() -> void:
 			"display_name": "Ninos",
 			"stats": {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42},
 			"resources": {"bardic_inspiration": {"current": 4, "max": 4}},
-			"position": Vector2(802, 208),
+			"position": HERO_POSITIONS.ninos,
 			"color": Color.GREEN # Green
 		}),
 		_make_character({
@@ -95,7 +114,7 @@ func _ready() -> void:
 			"display_name": "Catraca",
 			"stats": {"hp_max": 360, "mp_max": 120, "atk": 30, "def": 32, "mag": 68, "spd": 40},
 			"resources": {"sorcery_points": {"current": 5, "max": 5}},
-			"position": Vector2(895, 280),
+			"position": HERO_POSITIONS.catraca,
 			"color": Color.RED # Red
 		})
 	]
@@ -106,7 +125,7 @@ func _ready() -> void:
 			"display_name": "Marcus Gelt",
 			"stats": {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38},
 			"phase": 1,
-			"position": Vector2(286, 248),
+			"position": BOSS_POSITION,
 			"color": Color.BLACK # Black
 		})
 	]
@@ -131,7 +150,7 @@ func _make_character(data: Dictionary) -> Character:
 	var character = Character.new()
 	character.setup(data)
 	if data.has("position"):
-		character.position = data["position"] + Vector2(0, ACTOR_Y_OFFSET)
+		character.position = data["position"]
 	
 	# Add Visuals
 	var sprite_path = ""
@@ -147,6 +166,7 @@ func _make_character(data: Dictionary) -> Character:
 			sprite_path = "res://assets/sprites/characters/Ludwig_sprite_main.png"
 	if sprite_path != "":
 		var sprite = Sprite2D.new()
+		sprite.name = "Visual"
 		sprite.texture = load(sprite_path)
 		sprite.centered = false
 		sprite.position = Vector2(0, 0)
@@ -154,14 +174,19 @@ func _make_character(data: Dictionary) -> Character:
 		if sprite.texture:
 			sprite_size = sprite.texture.get_size() * ACTOR_SCALE
 		character.add_child(sprite)
+		actor_sprites[data.get("id", "")] = sprite
+		actor_base_positions[data.get("id", "")] = sprite.position
 	else:
 		var color = data.get("color", Color.WHITE)
 		var visual = ColorRect.new()
+		visual.name = "Visual"
 		visual.size = Vector2(40, 40)
 		visual.position = Vector2(-20, -20) # Center
 		visual.color = color
 		character.add_child(visual)
 		sprite_size = visual.size
+		actor_sprites[data.get("id", "")] = visual
+		actor_base_positions[data.get("id", "")] = visual.position
 	
 	# Add Name Label above head
 	var name_lbl = Label.new()
@@ -169,7 +194,9 @@ func _make_character(data: Dictionary) -> Character:
 	name_lbl.position = Vector2(0, sprite_size.y + 4)
 	name_lbl.size = Vector2(max(sprite_size.x, 80), 20)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_active_name_style(name_lbl, false)
 	character.add_child(name_lbl)
+	actor_name_labels[data.get("id", "")] = name_lbl
 	
 	add_child(character)
 	return character
@@ -179,18 +206,21 @@ func _make_boss(data: Dictionary) -> Boss:
 	var boss = Boss.new()
 	boss.setup(data)
 	if data.has("position"):
-		boss.position = data["position"] + Vector2(0, BOSS_Y_OFFSET)
+		boss.position = data["position"]
 		
 	# Add Visuals (Larger for boss)
 	var sprite_path = "res://assets/sprites/characters/marcus_sprite_main.png"
 	if ResourceLoader.exists(sprite_path):
 		var sprite = Sprite2D.new()
+		sprite.name = "Visual"
 		sprite.texture = load(sprite_path)
 		var tex_size = sprite.texture.get_size()
 		sprite.centered = false
 		sprite.position = Vector2(0, 0)
 		sprite.scale = Vector2(BOSS_SCALE, BOSS_SCALE)
 		boss.add_child(sprite)
+		actor_sprites[data.get("id", "")] = sprite
+		actor_base_positions[data.get("id", "")] = sprite.position
 		
 		var name_lbl = Label.new()
 		name_lbl.text = data.get("display_name", "")
@@ -198,31 +228,96 @@ func _make_boss(data: Dictionary) -> Boss:
 		name_lbl.position = Vector2(0, scaled_size.y + 6)
 		name_lbl.size = Vector2(max(scaled_size.x, 120), 20)
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_apply_active_name_style(name_lbl, false)
 		boss.add_child(name_lbl)
+		actor_name_labels[data.get("id", "")] = name_lbl
 		
-		boss_hp_label = Label.new()
-		boss_hp_label.position = Vector2(0, name_lbl.position.y + 20)
-		boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		boss_hp_label.size = Vector2(max(scaled_size.x, 120), 24)
-		boss.add_child(boss_hp_label)
+		boss_hp_bar = ProgressBar.new()
+		boss_hp_bar.min_value = 0
+		boss_hp_bar.max_value = data.get("stats", {}).get("hp_max", 1)
+		boss_hp_bar.value = boss_hp_bar.max_value
+		boss_hp_bar.show_percentage = false
+		boss_hp_bar.position = Vector2(name_lbl.position.x, name_lbl.position.y + name_lbl.size.y + 4)
+		boss_hp_bar.size = Vector2(name_lbl.size.x, 22)
+		boss_hp_bar_label = Label.new()
+		boss_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss_hp_bar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		boss_hp_bar_label.anchor_right = 1.0
+		boss_hp_bar_label.anchor_bottom = 1.0
+		boss_hp_bar_label.offset_left = 0.0
+		boss_hp_bar_label.offset_top = 0.0
+		boss_hp_bar_label.offset_right = 0.0
+		boss_hp_bar_label.offset_bottom = 0.0
+		boss_hp_bar.add_child(boss_hp_bar_label)
+		
+		var bg_style = StyleBoxFlat.new()
+		bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
+		bg_style.corner_radius_top_left = 8
+		bg_style.corner_radius_top_right = 8
+		bg_style.corner_radius_bottom_left = 8
+		bg_style.corner_radius_bottom_right = 8
+		boss_hp_fill_style = StyleBoxFlat.new()
+		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
+		boss_hp_fill_style.corner_radius_top_left = 8
+		boss_hp_fill_style.corner_radius_top_right = 8
+		boss_hp_fill_style.corner_radius_bottom_left = 8
+		boss_hp_fill_style.corner_radius_bottom_right = 8
+		boss_hp_bar.add_theme_stylebox_override("background", bg_style)
+		boss_hp_bar.add_theme_stylebox_override("fill", boss_hp_fill_style)
+		boss_hp_bar.add_theme_stylebox_override("fg", boss_hp_fill_style)
+		boss.add_child(boss_hp_bar)
 	else:
 		var color = data.get("color", Color.BLACK)
 		var visual = ColorRect.new()
+		visual.name = "Visual"
 		visual.size = Vector2(80, 80)
 		visual.position = Vector2(0, 0) # Top-left
 		visual.color = color
 		boss.add_child(visual)
+		actor_sprites[data.get("id", "")] = visual
+		actor_base_positions[data.get("id", "")] = visual.position
 		var name_lbl = Label.new()
 		name_lbl.text = data.get("display_name", "")
 		name_lbl.position = Vector2(0, visual.size.y + 6)
 		name_lbl.size = Vector2(max(visual.size.x, 120), 20)
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_apply_active_name_style(name_lbl, false)
 		boss.add_child(name_lbl)
-		boss_hp_label = Label.new()
-		boss_hp_label.position = Vector2(0, name_lbl.position.y + 20)
-		boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		boss_hp_label.size = Vector2(max(visual.size.x, 120), 24)
-		boss.add_child(boss_hp_label)
+		actor_name_labels[data.get("id", "")] = name_lbl
+		boss_hp_bar = ProgressBar.new()
+		boss_hp_bar.min_value = 0
+		boss_hp_bar.max_value = data.get("stats", {}).get("hp_max", 1)
+		boss_hp_bar.value = boss_hp_bar.max_value
+		boss_hp_bar.show_percentage = false
+		boss_hp_bar.position = Vector2(name_lbl.position.x, name_lbl.position.y + name_lbl.size.y + 4)
+		boss_hp_bar.size = Vector2(name_lbl.size.x, 22)
+		boss_hp_bar_label = Label.new()
+		boss_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss_hp_bar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		boss_hp_bar_label.anchor_right = 1.0
+		boss_hp_bar_label.anchor_bottom = 1.0
+		boss_hp_bar_label.offset_left = 0.0
+		boss_hp_bar_label.offset_top = 0.0
+		boss_hp_bar_label.offset_right = 0.0
+		boss_hp_bar_label.offset_bottom = 0.0
+		boss_hp_bar.add_child(boss_hp_bar_label)
+		
+		var bg_style = StyleBoxFlat.new()
+		bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
+		bg_style.corner_radius_top_left = 8
+		bg_style.corner_radius_top_right = 8
+		bg_style.corner_radius_bottom_left = 8
+		bg_style.corner_radius_bottom_right = 8
+		boss_hp_fill_style = StyleBoxFlat.new()
+		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
+		boss_hp_fill_style.corner_radius_top_left = 8
+		boss_hp_fill_style.corner_radius_top_right = 8
+		boss_hp_fill_style.corner_radius_bottom_left = 8
+		boss_hp_fill_style.corner_radius_bottom_right = 8
+		boss_hp_bar.add_theme_stylebox_override("background", bg_style)
+		boss_hp_bar.add_theme_stylebox_override("fill", boss_hp_fill_style)
+		boss_hp_bar.add_theme_stylebox_override("fg", boss_hp_fill_style)
+		boss.add_child(boss_hp_bar)
 	
 	add_child(boss)
 	return boss
@@ -242,6 +337,8 @@ func _on_turn_order_updated(order: Array) -> void:
 func _on_active_character_changed(actor_id: String) -> void:
 	_update_status_label(["Active Character: " + actor_id])
 	_update_turn_order_visual()
+	_update_active_character_highlight(actor_id)
+	_update_active_idle_motion(actor_id)
 
 func _update_turn_order_visual() -> void:
 	if not turn_order_display: return
@@ -300,12 +397,25 @@ func _on_action_executed(result: Dictionary) -> void:
 		var payload = result.get("payload", {})
 		var target_id = payload.get("target_id", "")
 		var target = battle_manager.get_actor_by_id(target_id)
+		var attacker_id = payload.get("attacker_id", "")
+		if attacker_id != "":
+			_play_action_whip(attacker_id)
 		
 		# Handle Damage
-		if payload.has("damage"):
+		if payload.has("damage_instances"):
+			var instances = payload.get("damage_instances", [])
+			if target:
+				_spawn_damage_numbers(target_id, instances)
+				_play_hit_shake(target_id)
+			var total_instances = 0
+			for hit in instances:
+				total_instances += int(hit)
+			pending_effect_messages.append("Damage: " + str(total_instances))
+		elif payload.has("damage"):
 			var dmg = payload["damage"]
 			if target:
-				_create_floating_text(target.position, str(dmg), Color.RED)
+				_spawn_damage_numbers(target_id, [dmg])
+				_play_hit_shake(target_id)
 			pending_effect_messages.append("Damage: " + str(dmg))
 				
 		# Handle Healing
@@ -319,14 +429,19 @@ func _on_action_executed(result: Dictionary) -> void:
 		if payload.has("buff"):
 			if target: # Self buff usually
 				_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
+			_create_status_indicator(payload.get("attacker_id", payload.get("target_id", "")))
 			pending_effect_messages.append("Buff: " + str(payload["buff"]))
 		elif payload.has("debuff"):
 			if target:
 				_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
+				_play_hit_shake(target_id)
+			_create_status_indicator(payload.get("target_id", ""))
 			pending_effect_messages.append("Debuff: " + str(payload["debuff"]))
 		elif payload.has("stun_applied") and payload["stun_applied"]:
 			if target:
 				_create_floating_text(target.position, "STUNNED", Color.YELLOW)
+				_play_hit_shake(target_id)
+			_create_status_indicator(payload.get("target_id", ""))
 			pending_effect_messages.append("Status: STUN")
 				
 	# Pass to log logic...
@@ -377,6 +492,7 @@ func _process_turn_loop() -> void:
 	if _is_party_member(actor_id):
 		state = "PLAYER_TURN"
 		message_log("Player turn: " + actor.display_name)
+		_apply_input_cooldown(250)
 		battle_menu.set_enabled(true)
 		battle_menu.setup(actor)
 		_update_menu_disables(actor)
@@ -385,6 +501,7 @@ func _process_turn_loop() -> void:
 	else:
 		state = "ENEMY_TURN"
 		message_log("Enemy turn: " + actor.display_name)
+		_apply_input_cooldown(250)
 		battle_menu.set_enabled(false)
 		target_cursor.deactivate()
 		await get_tree().create_timer(1.5).timeout
@@ -394,21 +511,19 @@ func _execute_enemy_turn(actor: Boss) -> void:
 	# Use new AI Controller logic
 	var ai_action = ai_controller.get_next_action(actor, battle_manager.battle_state)
 	
-	# Convert generic AI action to BattleManager enqueue
-	if ai_action.get("action_id", "") == ActionIds.BASIC_ATTACK:
-		var targets = ai_action.get("targets", [])
-		if targets.size() > 0:
-			battle_manager.enqueue_action(ActionFactory.basic_attack(actor.id, targets[0]))
-	elif ai_action.get("action_id", "") == ActionIds.SKIP_TURN:
+	# Enqueue the AI-selected action directly
+	if ai_action.is_empty():
 		battle_manager.enqueue_action(ActionFactory.skip_turn(actor.id))
 	else:
-		# Fallback or specific boss skills
-		battle_manager.enqueue_action(ActionFactory.basic_attack(actor.id, "kairus")) # Fallback
+		battle_manager.enqueue_action(ai_action)
 		
 	_execute_next_action()
 
 
 func _on_menu_action_selected(action_id: String) -> void:
+	if _is_input_cooldown_active():
+		return
+	_apply_input_cooldown(200)
 	var is_metamagic = action_id == ActionIds.CAT_METAMAGIC_QUICKEN or action_id == ActionIds.CAT_METAMAGIC_TWIN
 	if is_metamagic and action_id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
 		message_log("Twin Spell requires 2+ enemies.")
@@ -500,11 +615,41 @@ func _determine_target_pool(tags: Array, action_id: String) -> Array:
 	return battle_manager.battle_state.enemies
 
 
+func _get_target_node(actor_id: String) -> Node2D:
+	var actor = battle_manager.get_actor_by_id(actor_id)
+	if actor != null:
+		return actor
+	return null
+
+
+func _get_sprite_anchor(actor_id: String) -> Vector2:
+	if not actor_sprites.has(actor_id):
+		return Vector2.ZERO
+	var sprite = actor_sprites[actor_id]
+	if sprite is Node2D:
+		return sprite.global_position
+	return Vector2.ZERO
+
+
+func _create_status_indicator(actor_id: String) -> void:
+	if actor_id == "":
+		return
+	var anchor = _get_sprite_anchor(actor_id)
+	if anchor == Vector2.ZERO:
+		var actor = _get_target_node(actor_id)
+		if actor:
+			anchor = actor.global_position
+	if anchor != Vector2.ZERO:
+		_create_floating_text(anchor, "STATUS", Color.SKY_BLUE)
+
+
 func _update_menu_disables(actor: Character) -> void:
 	var disabled: Dictionary = {}
 	for item in battle_menu.menu_items:
 		var id = item.get("id", "")
 		if id == "ATTACK" or id == "SKILL_SUB" or id == "ITEM_SUB" or id == "META_SUB" or id == "DEFEND" or id == "GUARD_TOGGLE":
+			if actor.id == "ludwig" and actor.has_status(StatusEffectIds.GUARD_STANCE) and id == "ATTACK":
+				disabled[id] = "Guard Stance active."
 			continue
 		var action = ActionFactory.create_action(id, actor.id, [])
 		if action.get("resource_type", "") != "":
@@ -519,6 +664,10 @@ func _update_menu_disables(actor: Character) -> void:
 		if id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
 			disabled[id] = "Requires 2+ enemies."
 			continue
+		if actor.id == "ludwig" and actor.has_status(StatusEffectIds.GUARD_STANCE):
+			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
+				disabled[id] = "Guard Stance active."
+				continue
 		var tags = action.get("tags", [])
 		var pool = _determine_target_pool(tags, id)
 		if not tags.has(ActionTags.SELF) and pool.is_empty():
@@ -614,15 +763,23 @@ func _setup_background() -> void:
 
 
 func _setup_game_ui() -> void:
+	# Lower UI background
+	var lower_ui_bg = ColorRect.new()
+	lower_ui_bg.color = Color(0, 0, 0, 0.6)
+	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 20)
+	lower_ui_bg.size = Vector2(1152, 168)
+	lower_ui_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(lower_ui_bg)
+
 	# Party Status Panel (Bottom Right)
 	var panel_bg = Panel.new()
-	panel_bg.position = Vector2(650, 450)
-	panel_bg.size = Vector2(400, 150)
+	panel_bg.position = Vector2(640, LOWER_UI_TOP)
+	panel_bg.size = Vector2(500, 130)
 	add_child(panel_bg)
 	
 	party_status_panel = VBoxContainer.new()
 	party_status_panel.position = Vector2(10, 10)
-	party_status_panel.size = Vector2(380, 130)
+	party_status_panel.size = Vector2(480, 110)
 	panel_bg.add_child(party_status_panel)
 	
 	# Turn Order Display (Top Center)
@@ -641,7 +798,7 @@ func _setup_game_ui() -> void:
 	
 	# Combat Log Toast (Above Bottom UI)
 	combat_log_display = Label.new()
-	combat_log_display.position = Vector2(200, 410)
+	combat_log_display.position = Vector2(200, 470)
 	combat_log_display.size = Vector2(700, 30)
 	combat_log_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	combat_log_display.text = "Battle Start!"
@@ -680,12 +837,14 @@ func _update_status_label(lines: Array) -> void:
 		for child in party_status_panel.get_children():
 			child.queue_free()
 		
+		var active_id = battle_manager.battle_state.get("active_character_id", "")
 		# Rebuild party list
 		for actor in battle_manager.battle_state.party:
 			var hbox = HBoxContainer.new()
 			var name_lbl = Label.new()
 			name_lbl.text = actor.display_name
 			name_lbl.custom_minimum_size = Vector2(100, 0)
+			_apply_active_name_style(name_lbl, actor.id == active_id)
 			
 			var hp_lbl = Label.new()
 			hp_lbl.text = "HP: %d/%d" % [actor.hp_current, actor.stats["hp_max"]]
@@ -724,13 +883,18 @@ func _update_status_label(lines: Array) -> void:
 	# Update Boss Status (Simple Label above boss if exists or separate panel)
 	# For simplicity, let's find the boss or use a dedicated Boss Label if we created one.
 	# We didn't create a dedicated variable for boss UI yet, so let's add it dynamically or just rely on a new label.
-	if boss_hp_label:
+	if boss_hp_bar:
 		var enemies = battle_manager.get_alive_enemies()
 		if enemies.size() > 0:
 			var boss = enemies[0]
-			boss_hp_label.text = "%d/%d" % [boss.hp_current, boss.stats["hp_max"]]
+			boss_hp_bar.max_value = boss.stats["hp_max"]
+			boss_hp_bar.value = boss.hp_current
+			if boss_hp_bar_label:
+				boss_hp_bar_label.text = "%d/%d" % [boss.hp_current, boss.stats["hp_max"]]
+			_update_boss_hp_color(boss.hp_current, boss.stats["hp_max"])
 		else:
-			boss_hp_label.text = "Victory?"
+			if boss_hp_bar_label:
+				boss_hp_bar_label.text = "Victory?"
 			
 	# Update Status Effects Label
 	_update_status_effects_text()
@@ -805,3 +969,143 @@ func _is_party_member(actor_id: String) -> bool:
 		if member.id == actor_id:
 			return true
 	return false
+
+func _spawn_damage_numbers(target_id: String, damages: Array) -> void:
+	var actor = battle_manager.get_actor_by_id(target_id)
+	if actor == null:
+		return
+	for i in range(damages.size()):
+		var dmg_val = int(damages[i])
+		var delay = float(i) * 0.3
+		var timer = get_tree().create_timer(delay)
+		timer.timeout.connect(func ():
+			_create_damage_text(actor.position, str(dmg_val))
+		)
+
+func _create_damage_text(pos: Vector2, text: String) -> void:
+	var label = Label.new()
+	label.text = text
+	label.modulate = Color(1.0, 0.55, 0.1)
+	label.position = pos + Vector2(0, -60)
+	label.add_theme_font_size_override("font_size", 32)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 2)
+	add_child(label)
+	
+	var tween = create_tween()
+	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(label.queue_free)
+
+func _update_active_idle_motion(active_id: String) -> void:
+	for actor_id in actor_sprites.keys():
+		if actor_id == active_id:
+			_start_idle_wiggle(actor_id)
+		else:
+			_stop_idle_wiggle(actor_id)
+
+func _start_idle_wiggle(actor_id: String) -> void:
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	if actor_idle_tweens.has(actor_id):
+		var existing = actor_idle_tweens[actor_id]
+		if existing:
+			existing.kill()
+	var base_pos = actor_base_positions.get(actor_id, Vector2.ZERO)
+	sprite.position = base_pos
+	var tween = create_tween()
+	tween.set_loops()
+	tween.tween_property(sprite, "position:x", base_pos.x + 4, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(sprite, "position:x", base_pos.x - 4, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(sprite, "position:x", base_pos.x, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	actor_idle_tweens[actor_id] = tween
+
+func _stop_idle_wiggle(actor_id: String) -> void:
+	if actor_idle_tweens.has(actor_id):
+		var tween = actor_idle_tweens[actor_id]
+		if tween:
+			tween.kill()
+		actor_idle_tweens.erase(actor_id)
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	var base_pos = actor_base_positions.get(actor_id, sprite.position)
+	sprite.position = base_pos
+
+func _play_action_whip(actor_id: String) -> void:
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	_stop_idle_wiggle(actor_id)
+	if actor_action_tweens.has(actor_id):
+		var existing = actor_action_tweens[actor_id]
+		if existing:
+			existing.kill()
+	var base_pos = actor_base_positions.get(actor_id, sprite.position)
+	var dir = 1.0
+	if _is_party_member(actor_id):
+		dir = -1.0
+	var tween = create_tween()
+	tween.tween_property(sprite, "position:x", base_pos.x + (dir * 10.0), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite, "position:x", base_pos.x, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	actor_action_tweens[actor_id] = tween
+	_resume_idle_if_active(actor_id, 0.25)
+
+func _play_hit_shake(actor_id: String) -> void:
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	_stop_idle_wiggle(actor_id)
+	if actor_shake_tweens.has(actor_id):
+		var existing = actor_shake_tweens[actor_id]
+		if existing:
+			existing.kill()
+	var base_pos = actor_base_positions.get(actor_id, sprite.position)
+	var tween = create_tween()
+	tween.tween_property(sprite, "position:x", base_pos.x + 5, 0.04)
+	tween.tween_property(sprite, "position:x", base_pos.x - 5, 0.04)
+	tween.tween_property(sprite, "position:x", base_pos.x + 3, 0.04)
+	tween.tween_property(sprite, "position:x", base_pos.x, 0.05)
+	actor_shake_tweens[actor_id] = tween
+	_resume_idle_if_active(actor_id, 0.35)
+
+func _resume_idle_if_active(actor_id: String, delay: float) -> void:
+	var timer = get_tree().create_timer(delay)
+	timer.timeout.connect(func ():
+		if battle_manager.battle_state.get("active_character_id", "") == actor_id:
+			_start_idle_wiggle(actor_id)
+	)
+
+func _apply_active_name_style(label: Label, is_active: bool) -> void:
+	if is_active:
+		label.modulate = ACTIVE_NAME_COLOR
+		label.add_theme_font_size_override("font_size", ACTIVE_NAME_FONT_SIZE)
+	else:
+		label.modulate = INACTIVE_NAME_COLOR
+		label.add_theme_font_size_override("font_size", INACTIVE_NAME_FONT_SIZE)
+
+func _update_active_character_highlight(active_id: String) -> void:
+	for actor_id in actor_name_labels.keys():
+		var lbl = actor_name_labels[actor_id]
+		if lbl is Label:
+			_apply_active_name_style(lbl, actor_id == active_id)
+
+func _apply_input_cooldown(ms: int) -> void:
+	input_cooldown_until_ms = Time.get_ticks_msec() + ms
+
+func _is_input_cooldown_active() -> bool:
+	return Time.get_ticks_msec() < input_cooldown_until_ms
+
+func _update_boss_hp_color(current_hp: int, max_hp: int) -> void:
+	if boss_hp_fill_style == null:
+		return
+	var ratio := 0.0
+	if max_hp > 0:
+		ratio = float(current_hp) / float(max_hp)
+	if ratio <= 0.25:
+		boss_hp_fill_style.bg_color = Color(0.85, 0.2, 0.2)
+	elif ratio <= 0.5:
+		boss_hp_fill_style.bg_color = Color(0.95, 0.65, 0.15)
+	else:
+		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)

@@ -28,6 +28,10 @@ static func atk_down(turns: int = 3, percent: float = 0.25) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.ATK_DOWN, turns, int(percent * 100), [StatusTags.NEGATIVE, StatusTags.STAT_DEBUFF])
 
 
+static func atk_up(turns: int = 4, percent: float = 0.25) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.ATK_UP, turns, int(percent * 100), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
 static func bless_buff(turns: int = 3, bonus: int = 2) -> StatusEffect:
 	# Bonus 1d4 (avg 2-3). Let's use value=2 for flat view, or handle in damage calc
 	return StatusEffect.new("bless", turns, bonus, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])

@@ -1,7 +1,7 @@
 # Project Handoff - Agent Swap Complete
 
-## Date: 2026-02-02
-## Status: Phase 3 Logic Implemented + Phase 4 UI Scaffolding In Progress
+## Date: 2026-02-03
+## Status: Phase 3 Logic Implemented + Phase 4 UI/Feedback Polish In Progress
 
 ### 1. Completed Features
 - **Ludwig Von Tannhauser**:
@@ -23,6 +23,13 @@
   - `battle_scene.gd` now drives player turns via menu/target selection.
   - Battle log panel (top-left) shows recent messages + effect results with turn separators.
   - Limit gauge bar displayed per character in party panel.
+- **Feedback/Polish Pass**:
+  - Boss HP bar now uses a thicker pill bar with color thresholds.
+  - Active turn highlighting in party panel + name-under-sprite labels.
+  - Added idle sway, action whip, and hit shake to sprites.
+  - Damage numbers are larger, orange, and stagger for multi-hit.
+  - Catraca’s Attack now uses Fire Bolt; Fire Bolt removed from Magic submenu.
+  - ATK_DOWN now scales damage using the status value (default 25%).
 
 ### 2. File Manifest
 - `scripts/action_ids.gd`: Added IDs for all Phase 3 actions.
@@ -37,6 +44,12 @@
 - `docs/IMPLEMENTATION_PLAN_PHASE_4.md`: Menu/targeting plan.
 
 ### 3. Known Issues / Next Steps
+- **Status/Stance Validation**: Verify Imbue, Mage Armor, Guard Stance (and similar) are applying/visible consistently.
+- **Guard Stance**: Implemented DEF * 1.5, damage taken * 0.5, action restrictions, and Riposte counter.
+- **Status Effects**: ATK_DOWN now reduces attacker ATK; Mage Armor increases DEF in damage calculations.
+- **Targeting Reticule**: Now anchors to each actor’s Visual node to avoid stale positions.
+- **Target Reticule Attachment**: Reticule should attach to sprite nodes (avoid stale positions).
+- **Bottom UI Placement**: Push bottom UI closer to the bottom edge of the viewport.
 - **Catraca Mage Armor**: In the latest smoke test, Mage Armor status didn't appear on the UI. Verify if it was cast (logic checks `if not has_status`).
 - **AoE Tweaks**: Fireball currently hits specific target list; need to implement true targeting selection UI in Phase 4.
 - **Inspiration Logic**: Currently just logs consumption; needs hook into `AttackResult` calculation for the *next* attack.
@@ -54,6 +67,10 @@
 - **Limit Gauge**: Added per-character limit gauge tracking and a small UI bar in the party panel.
 - **Input Lock**: Player input is disabled during enemy turns; target cursor deactivates when not selecting.
 - **Readability**: Increased turn pacing and combat log fade time.
+- **Boss AI (Phase 1)**: Implemented Marcus turn rotation (Greataxe Slam, Tendril Lash, Battle Roar, Collector's Grasp) with pull-target follow-up.
+- **Boss AI Wiring**: Enemy turn now enqueues the AI-selected action directly (not forced to basic attack).
+- **Feedback Tuning**: Adjust sway/whip/shake intensity and damage number spacing if needed.
+- **Multi-hit Messages**: Only Flurry emits per-hit numbers; extend to future multi-hit actions.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

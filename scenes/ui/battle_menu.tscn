@@ -14,9 +14,9 @@ script = ExtResource("1_menu")
 [node name="Panel" type="Panel" parent="."]
 layout_mode = 0
 offset_left = 50.0
-offset_top = 450.0
+offset_top = 500.0
 offset_right = 250.0
-offset_bottom = 600.0
+offset_bottom = 650.0
 
 [node name="ActionList" type="VBoxContainer" parent="Panel"]
 layout_mode = 0
@@ -28,9 +28,9 @@ offset_bottom = 144.0
 [node name="DescriptionPanel" type="Panel" parent="."]
 layout_mode = 0
 offset_left = 260.0
-offset_top = 450.0
+offset_top = 500.0
 offset_right = 650.0
-offset_bottom = 500.0
+offset_bottom = 550.0
 
 [node name="Label" type="Label" parent="DescriptionPanel"]
 layout_mode = 1

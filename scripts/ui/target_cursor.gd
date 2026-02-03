@@ -84,7 +84,11 @@ func _update_position() -> void:
 	# Let's check Character structure.
 	
 	if target is Node2D:
-		global_position = target.global_position + Vector2(0, -50) # Point above head
+		var visual = target.get_node_or_null("Visual")
+		if visual is Node2D:
+			global_position = visual.global_position + Vector2(0, -20)
+		else:
+			global_position = target.global_position + Vector2(0, -50) # Point above head
 	else:
 		# Fallback if characters aren't spatial, just print for now or use mock positions
 		# Since the harness is pure logic Node based, we might not have positions!

@@ -52,8 +52,11 @@ func open_magic_submenu() -> void:
 
 func _build_main_menu() -> void:
 	menu_items.clear()
-	# Common Attack
-	menu_items.append({"label": "Attack", "id": "ATTACK", "desc": "Basic physical attack."})
+	# Common Attack (Catraca uses Fire Bolt as her basic)
+	if active_actor.id == "catraca":
+		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Cantrip: Fire damage."})
+	else:
+		menu_items.append({"label": "Attack", "id": "ATTACK", "desc": "Basic physical attack."})
 	
 	# Class Specific Submenu
 	match active_actor.id:
@@ -100,7 +103,6 @@ func _build_submenu(category: String) -> void:
 				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP: Buff party."})
 		"catraca":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Cantrip: Fire damage."})
 				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP: AoE Fire damage."})
 				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP: Buff defense."})
 			elif category == "META_SUB":

@@ -1,6 +1,6 @@
 # Agent Swap Notes (Short Handoff)
 
-Date: 2026-02-02
+Date: 2026-02-03
 
 ## What Gemini changed (recent history)
 - Implemented Phase 3 actions for Ludwig/Ninos/Catraca in `scripts/action_factory.gd` + `scripts/battle_manager.gd`.
@@ -30,6 +30,11 @@ Date: 2026-02-02
 - Added Catraca Metamagic submenu (Quicken/Twin) and routing into Magic selection.
 - Added Limit Gauge tracking + small UI bar per character (party panel).
 - Cleaned party resource labels to show MP + Ki/SD/BI/SP consistently.
+- Converted Marcus HP to a thicker pill bar with color thresholds and aligned under name.
+- Added sprite feedback: active idle sway, action whip, and hit shake.
+- Updated damage numbers (larger, orange, staggered for multi-hit).
+- Catraca’s main Attack now uses Fire Bolt; Fire Bolt removed from Magic submenu.
+- ATK_DOWN now uses its status value to scale damage.
 
 ## Next high-level steps
 1) Verify input mappings and menu flow stability (ui_up/down/left/right/accept/cancel).

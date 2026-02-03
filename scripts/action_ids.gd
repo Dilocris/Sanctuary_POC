@@ -25,3 +25,8 @@ const CAT_MAGIC_MISSILE := "catraca_magic_missile"
 const CAT_METAMAGIC_QUICKEN := "catraca_metamagic_quicken"
 const CAT_METAMAGIC_TWIN := "catraca_metamagic_twin"
 
+# Boss actions (Marcus Gelt)
+const BOS_GREAXE_SLAM := "marcus_greataxe_slam"
+const BOS_TENDRIL_LASH := "marcus_tendril_lash"
+const BOS_BATTLE_ROAR := "marcus_battle_roar"
+const BOS_COLLECTORS_GRASP := "marcus_collectors_grasp"

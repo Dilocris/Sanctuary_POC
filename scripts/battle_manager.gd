@@ -40,7 +40,9 @@ func setup_state(party: Array, enemies: Array) -> void:
 	battle_state.flags = {
 		"ludwig_second_wind_used": false,
 		"ninos_counterspell_used": false,
-		"metamagic": {}
+		"metamagic": {},
+		"marcus_pull_target": "",
+		"marcus_turn_index": 0
 	}
 
 
@@ -115,6 +117,7 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 	var damage = DamageCalculator.calculate_physical_damage(attacker, target, multiplier)
 	_apply_damage_with_limit(attacker, target, damage)
 	add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
+	_try_riposte(attacker, target)
 	return ActionResult.new(true, "", {
 		"damage": damage,
 		"attacker_id": attacker_id,
@@ -170,9 +173,13 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var flurry_total = _apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0))
+			var flurry_hits = _apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0))
+			var flurry_total = 0
+			for hit in flurry_hits:
+				flurry_total += int(hit)
 			return ActionResult.new(true, "", {
 				"damage": flurry_total,
+				"damage_instances": flurry_hits,
 				"hits": 2,
 				"attacker_id": actor_id,
 				"target_id": targets[0]
@@ -188,6 +195,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				var target = get_actor_by_id(targets[0])
 				if target != null:
 					target.add_status(StatusEffectFactory.stun(1))
+					_remove_guard_on_stun(target)
 					applied = true
 					add_message(target.display_name + " is stunned!")
 			return ActionResult.new(true, "", {
@@ -264,6 +272,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				var target_bash = get_actor_by_id(targets[0])
 				if target_bash != null:
 					target_bash.add_status(StatusEffectFactory.stun(1))
+					_remove_guard_on_stun(target_bash)
 					stunned = true
 					add_message(target_bash.display_name + " is stunned by the shield bash!")
 			return ActionResult.new(true, "", {
@@ -431,6 +440,37 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				add_message(actor.display_name + " prepares Twin Spell.")
 				return ActionResult.new(true, "", {"metamagic": "twin"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.BOS_GREAXE_SLAM:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
+		ActionIds.BOS_TENDRIL_LASH:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			var lash_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 0.8))
+			var target_lash = get_actor_by_id(targets[0])
+			if target_lash != null:
+				target_lash.add_status(StatusEffectFactory.poison())
+				add_message(target_lash.display_name + " is poisoned!")
+			return lash_result
+		ActionIds.BOS_BATTLE_ROAR:
+			if actor != null:
+				var stacks = _count_status(actor, StatusEffectIds.ATK_UP)
+				if stacks < 2:
+					actor.add_status(StatusEffectFactory.atk_up(4, 0.25))
+					add_message(actor.display_name + " roars and powers up!")
+				else:
+					add_message(actor.display_name + " roars, but can't stack more ATK.")
+				return ActionResult.new(true, "", {"buff": "atk_up"}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.BOS_COLLECTORS_GRASP:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			battle_state.flags.marcus_pull_target = targets[0]
+			var pulled = get_actor_by_id(targets[0])
+			if pulled != null:
+				add_message(pulled.display_name + " is dragged toward Marcus!")
+			return ActionResult.new(true, "", {"pull": targets[0]}).to_dict()
 
 		_:
 			return ActionResult.new(false, "unknown_action").to_dict()
@@ -461,6 +501,11 @@ func _validate_action(action: Dictionary) -> Dictionary:
 			var cost = action.get("resource_cost", 0)
 			if actor.get_resource_current(action.resource_type) < cost:
 				return ActionResult.new(false, "insufficient_resources").to_dict()
+	if actor.has_status(StatusEffectIds.GUARD_STANCE):
+		if action.get("action_id", "") == ActionIds.BASIC_ATTACK:
+			return ActionResult.new(false, "guard_stance_restricts").to_dict()
+		if action.get("action_id", "") in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
+			return ActionResult.new(false, "guard_stance_restricts").to_dict()
 	return ActionResult.new(true).to_dict()
 
 
@@ -496,12 +541,12 @@ func process_end_of_turn_effects(actor: Character) -> void:
 	_check_battle_end()
 
 
-func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multiplier: float) -> int:
-	var total = 0
+func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multiplier: float) -> Array:
+	var damages: Array = []
 	for _i in range(hits):
 		var result = execute_basic_attack(attacker_id, target_id, multiplier)
-		total += result.get("payload", {}).get("damage", 0)
-	return total
+		damages.append(result.get("payload", {}).get("damage", 0))
+	return damages
 
 
 func _get_additional_enemy_target(exclude_id: String) -> Character:
@@ -516,6 +561,38 @@ func _apply_damage_with_limit(attacker: Character, target: Character, amount: in
 		return
 	target.apply_damage(amount)
 	_update_limit_gauges(attacker, target, amount)
+
+
+func _try_riposte(attacker: Character, defender: Character) -> void:
+	if attacker == null or defender == null:
+		return
+	if defender.id != "ludwig":
+		return
+	if not defender.has_status(StatusEffectIds.GUARD_STANCE):
+		return
+	if randf() > 0.5:
+		return
+	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, 0.6)
+	_apply_damage_with_limit(defender, attacker, riposte_dmg)
+	add_message("Riposte! " + defender.display_name + " counters for " + str(riposte_dmg) + " damage.")
+
+
+func _remove_guard_on_stun(target: Character) -> void:
+	if target != null and target.has_status(StatusEffectIds.GUARD_STANCE):
+		target.remove_status(StatusEffectIds.GUARD_STANCE)
+		add_message(target.display_name + "'s Guard Stance breaks!")
+
+
+func _count_status(actor: Character, status_id: String) -> int:
+	var count = 0
+	if actor == null:
+		return 0
+	for status in actor.status_effects:
+		if status is StatusEffect and status.id == status_id:
+			count += 1
+		elif status is Dictionary and status.get("id", "") == status_id:
+			count += 1
+	return count
 
 
 func _update_limit_gauges(attacker: Character, target: Character, amount: int) -> void:
