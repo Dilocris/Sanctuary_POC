@@ -40,21 +40,8 @@ var active_player_id = ""
 var battle_over: bool = false
 var pending_enemy_action: Dictionary = {}
 var input_locked: bool = false
-const ACTOR_SCALE := 2.0
-const BOSS_SCALE := 2.0
-const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
-const INACTIVE_NAME_COLOR := Color(1, 1, 1)
-const ACTIVE_NAME_FONT_SIZE := 16
-const INACTIVE_NAME_FONT_SIZE := 13
 const LOWER_UI_TOP := 492
 @export var enemy_intent_duration := 2.0
-const HERO_POSITIONS := {
-	"kairus": Vector2(735, 326),
-	"ludwig": Vector2(607, 250),
-	"ninos": Vector2(802, 208),
-	"catraca": Vector2(895, 280)
-}
-const BOSS_POSITION := Vector2(286, 248)
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
@@ -62,6 +49,7 @@ const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
 var ai_controller: AiController
 var animation_controller: BattleAnimationController
 var ui_manager: BattleUIManager
+var renderer: BattleRenderer
 
 
 func _ready() -> void:
@@ -93,8 +81,10 @@ func _ready() -> void:
 	limit_label = ui_manager.limit_label
 	battle_log_panel = ui_manager.battle_log_panel
 
-	# Background
-	_setup_background()
+	# Setup Renderer
+	renderer = BattleRenderer.new()
+	renderer.setup(self)
+	renderer.create_background()
 
 	# Instantiate UI
 	battle_menu = BattleMenuScene.instantiate()
@@ -102,7 +92,6 @@ func _ready() -> void:
 	battle_menu.action_selected.connect(_on_menu_action_selected)
 	battle_menu.action_blocked.connect(_on_menu_action_blocked)
 	battle_menu.menu_changed.connect(_on_menu_changed)
-	# battle_menu.menu_canceled.connect(_on_menu_canceled) # Not implemented yet
 
 	target_cursor = TargetCursorScene.instantiate()
 	add_child(target_cursor)
@@ -125,32 +114,32 @@ func _ready() -> void:
 			"display_name": "Kairus",
 			"stats": {"hp_max": 450, "mp_max": 60, "atk": 62, "def": 42, "mag": 28, "spd": 55},
 			"resources": {"ki": {"current": 6, "max": 6}},
-			"position": HERO_POSITIONS.kairus,
-			"color": Color(0.5, 0, 0.5) # Purple
+			"position": BattleRenderer.HERO_POSITIONS.kairus,
+			"color": Color(0.5, 0, 0.5)
 		}),
 		_make_character({
 			"id": "ludwig",
 			"display_name": "Ludwig",
 			"stats": {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34},
 			"resources": {"superiority_dice": {"current": 4, "max": 4}},
-			"position": HERO_POSITIONS.ludwig,
-			"color": Color.GRAY # Gray
+			"position": BattleRenderer.HERO_POSITIONS.ludwig,
+			"color": Color.GRAY
 		}),
 		_make_character({
 			"id": "ninos",
 			"display_name": "Ninos",
 			"stats": {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42},
 			"resources": {"bardic_inspiration": {"current": 4, "max": 4}},
-			"position": HERO_POSITIONS.ninos,
-			"color": Color.GREEN # Green
+			"position": BattleRenderer.HERO_POSITIONS.ninos,
+			"color": Color.GREEN
 		}),
 		_make_character({
 			"id": "catraca",
 			"display_name": "Catraca",
 			"stats": {"hp_max": 360, "mp_max": 120, "atk": 30, "def": 32, "mag": 68, "spd": 40},
 			"resources": {"sorcery_points": {"current": 5, "max": 5}},
-			"position": HERO_POSITIONS.catraca,
-			"color": Color.RED # Red
+			"position": BattleRenderer.HERO_POSITIONS.catraca,
+			"color": Color.RED
 		})
 	]
 
@@ -160,10 +149,22 @@ func _ready() -> void:
 			"display_name": "Marcus Gelt",
 			"stats": {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38},
 			"phase": 1,
-			"position": BOSS_POSITION,
-			"color": Color.BLACK # Black
+			"position": BattleRenderer.BOSS_POSITION,
+			"color": Color.BLACK
 		})
 	]
+
+	# Copy renderer dictionaries for backward compatibility
+	actor_sprites = renderer.actor_sprites
+	actor_nodes = renderer.actor_nodes
+	actor_name_labels = renderer.actor_name_labels
+	actor_base_positions = renderer.actor_base_positions
+	actor_base_modulates = renderer.actor_base_modulates
+	actor_base_self_modulates = renderer.actor_base_self_modulates
+	actor_root_positions = renderer.actor_root_positions
+	boss_hp_bar = renderer.boss_hp_bar
+	boss_hp_bar_label = renderer.boss_hp_bar_label
+	boss_hp_fill_style = renderer.boss_hp_fill_style
 
 	# Setup animation controller with references
 	animation_controller = BattleAnimationController.new()
@@ -196,209 +197,32 @@ func _ready() -> void:
 
 
 func _make_character(data: Dictionary) -> Character:
-	var character = Character.new()
-	character.setup(data)
+	var character = renderer.create_character(data)
+	var actor_id = data.get("id", "")
 	character.status_added.connect(func (status_id):
-		_on_status_added(data.get("id", ""), status_id)
+		_on_status_added(actor_id, status_id)
 	)
 	character.status_removed.connect(func (status_id):
-		_on_status_removed(data.get("id", ""), status_id)
+		_on_status_removed(actor_id, status_id)
 	)
 	character.damage_taken.connect(func (amount):
-		_flash_damage_tint(data.get("id", ""), amount)
+		_flash_damage_tint(actor_id, amount)
 	)
-	if data.has("position"):
-		character.position = data["position"]
-	actor_nodes[data.get("id", "")] = character
-	actor_root_positions[data.get("id", "")] = character.position
-	
-	# Add Visuals
-	var sprite_path = ""
-	var sprite_size = Vector2(40, 40)
-	match data.get("id", ""):
-		"kairus":
-			sprite_path = "res://assets/sprites/characters/kairus_sprite_main.png"
-		"catraca":
-			sprite_path = "res://assets/sprites/characters/catraca_sprite_main.png"
-		"ninos":
-			sprite_path = "res://assets/sprites/characters/ninos_sprite_main.png"
-		"ludwig":
-			sprite_path = "res://assets/sprites/characters/Ludwig_sprite_main.png"
-	if sprite_path != "":
-		var sprite = Sprite2D.new()
-		sprite.name = "Visual"
-		sprite.texture = load(sprite_path)
-		sprite.centered = false
-		sprite.position = Vector2(0, 0)
-		sprite.scale = Vector2(ACTOR_SCALE, ACTOR_SCALE)
-		actor_base_modulates[data.get("id", "")] = sprite.modulate
-		if sprite.texture:
-			sprite_size = sprite.texture.get_size() * ACTOR_SCALE
-		character.add_child(sprite)
-		actor_sprites[data.get("id", "")] = sprite
-		actor_base_positions[data.get("id", "")] = sprite.position
-		actor_base_self_modulates[data.get("id", "")] = sprite.self_modulate
-	else:
-		var color = data.get("color", Color.WHITE)
-		var visual = ColorRect.new()
-		visual.name = "Visual"
-		visual.size = Vector2(40, 40)
-		visual.position = Vector2(-20, -20) # Center
-		visual.color = color
-		character.add_child(visual)
-		sprite_size = visual.size
-		actor_sprites[data.get("id", "")] = visual
-		actor_base_modulates[data.get("id", "")] = visual.modulate
-		actor_base_positions[data.get("id", "")] = visual.position
-		actor_base_self_modulates[data.get("id", "")] = visual.self_modulate
-	
-	# Add Name Label above head
-	var name_lbl = Label.new()
-	name_lbl.text = data.get("display_name", "")
-	name_lbl.position = Vector2(0, sprite_size.y + 4)
-	name_lbl.size = Vector2(max(sprite_size.x, 80), 20)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_apply_active_name_style(name_lbl, false)
-	character.add_child(name_lbl)
-	actor_name_labels[data.get("id", "")] = name_lbl
-	
-	add_child(character)
 	return character
 
 
 func _make_boss(data: Dictionary) -> Boss:
-	var boss = Boss.new()
-	boss.setup(data)
+	var boss = renderer.create_boss(data)
+	var actor_id = data.get("id", "")
 	boss.status_added.connect(func (status_id):
-		_on_status_added(data.get("id", ""), status_id)
+		_on_status_added(actor_id, status_id)
 	)
 	boss.status_removed.connect(func (status_id):
-		_on_status_removed(data.get("id", ""), status_id)
+		_on_status_removed(actor_id, status_id)
 	)
 	boss.damage_taken.connect(func (amount):
-		_flash_damage_tint(data.get("id", ""), amount)
+		_flash_damage_tint(actor_id, amount)
 	)
-	if data.has("position"):
-		boss.position = data["position"]
-	actor_nodes[data.get("id", "")] = boss
-	actor_root_positions[data.get("id", "")] = boss.position
-		
-	# Add Visuals (Larger for boss)
-	var sprite_path = "res://assets/sprites/characters/marcus_sprite_main.png"
-	if ResourceLoader.exists(sprite_path):
-		var sprite = Sprite2D.new()
-		sprite.name = "Visual"
-		sprite.texture = load(sprite_path)
-		var tex_size = sprite.texture.get_size()
-		sprite.centered = false
-		sprite.position = Vector2(0, 0)
-		sprite.scale = Vector2(BOSS_SCALE, BOSS_SCALE)
-		actor_base_modulates[data.get("id", "")] = sprite.modulate
-		boss.add_child(sprite)
-		actor_sprites[data.get("id", "")] = sprite
-		actor_base_positions[data.get("id", "")] = sprite.position
-		actor_base_self_modulates[data.get("id", "")] = sprite.self_modulate
-		
-		var name_lbl = Label.new()
-		name_lbl.text = data.get("display_name", "")
-		var scaled_size = tex_size * BOSS_SCALE
-		name_lbl.position = Vector2(0, scaled_size.y + 6)
-		name_lbl.size = Vector2(max(scaled_size.x, 120), 20)
-		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_apply_active_name_style(name_lbl, false)
-		boss.add_child(name_lbl)
-		actor_name_labels[data.get("id", "")] = name_lbl
-		
-		boss_hp_bar = ProgressBar.new()
-		boss_hp_bar.min_value = 0
-		boss_hp_bar.max_value = data.get("stats", {}).get("hp_max", 1)
-		boss_hp_bar.value = boss_hp_bar.max_value
-		boss_hp_bar.show_percentage = false
-		boss_hp_bar.position = Vector2(name_lbl.position.x, name_lbl.position.y + name_lbl.size.y + 2)
-		boss_hp_bar.size = Vector2(name_lbl.size.x, 26)
-		boss_hp_bar_label = Label.new()
-		boss_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		boss_hp_bar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		boss_hp_bar_label.anchor_right = 1.0
-		boss_hp_bar_label.anchor_bottom = 1.0
-		boss_hp_bar_label.offset_left = 0.0
-		boss_hp_bar_label.offset_top = 0.0
-		boss_hp_bar_label.offset_right = 0.0
-		boss_hp_bar_label.offset_bottom = 0.0
-		boss_hp_bar.add_child(boss_hp_bar_label)
-		
-		var bg_style = StyleBoxFlat.new()
-		bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
-		bg_style.corner_radius_top_left = 8
-		bg_style.corner_radius_top_right = 8
-		bg_style.corner_radius_bottom_left = 8
-		bg_style.corner_radius_bottom_right = 8
-		boss_hp_fill_style = StyleBoxFlat.new()
-		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
-		boss_hp_fill_style.corner_radius_top_left = 8
-		boss_hp_fill_style.corner_radius_top_right = 8
-		boss_hp_fill_style.corner_radius_bottom_left = 8
-		boss_hp_fill_style.corner_radius_bottom_right = 8
-		boss_hp_bar.add_theme_stylebox_override("background", bg_style)
-		boss_hp_bar.add_theme_stylebox_override("fill", boss_hp_fill_style)
-		boss_hp_bar.add_theme_stylebox_override("fg", boss_hp_fill_style)
-		boss.add_child(boss_hp_bar)
-	else:
-		var color = data.get("color", Color.BLACK)
-		var visual = ColorRect.new()
-		visual.name = "Visual"
-		visual.size = Vector2(80, 80)
-		visual.position = Vector2(0, 0) # Top-left
-		visual.color = color
-		boss.add_child(visual)
-		actor_sprites[data.get("id", "")] = visual
-		actor_base_modulates[data.get("id", "")] = visual.modulate
-		actor_base_positions[data.get("id", "")] = visual.position
-		actor_base_self_modulates[data.get("id", "")] = visual.self_modulate
-		var name_lbl = Label.new()
-		name_lbl.text = data.get("display_name", "")
-		name_lbl.position = Vector2(0, visual.size.y + 6)
-		name_lbl.size = Vector2(max(visual.size.x, 120), 20)
-		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_apply_active_name_style(name_lbl, false)
-		boss.add_child(name_lbl)
-		actor_name_labels[data.get("id", "")] = name_lbl
-		boss_hp_bar = ProgressBar.new()
-		boss_hp_bar.min_value = 0
-		boss_hp_bar.max_value = data.get("stats", {}).get("hp_max", 1)
-		boss_hp_bar.value = boss_hp_bar.max_value
-		boss_hp_bar.show_percentage = false
-		boss_hp_bar.position = Vector2(name_lbl.position.x, name_lbl.position.y + name_lbl.size.y + 2)
-		boss_hp_bar.size = Vector2(name_lbl.size.x, 26)
-		boss_hp_bar_label = Label.new()
-		boss_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		boss_hp_bar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		boss_hp_bar_label.anchor_right = 1.0
-		boss_hp_bar_label.anchor_bottom = 1.0
-		boss_hp_bar_label.offset_left = 0.0
-		boss_hp_bar_label.offset_top = 0.0
-		boss_hp_bar_label.offset_right = 0.0
-		boss_hp_bar_label.offset_bottom = 0.0
-		boss_hp_bar.add_child(boss_hp_bar_label)
-		
-		var bg_style = StyleBoxFlat.new()
-		bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
-		bg_style.corner_radius_top_left = 8
-		bg_style.corner_radius_top_right = 8
-		bg_style.corner_radius_bottom_left = 8
-		bg_style.corner_radius_bottom_right = 8
-		boss_hp_fill_style = StyleBoxFlat.new()
-		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
-		boss_hp_fill_style.corner_radius_top_left = 8
-		boss_hp_fill_style.corner_radius_top_right = 8
-		boss_hp_fill_style.corner_radius_bottom_left = 8
-		boss_hp_fill_style.corner_radius_bottom_right = 8
-		boss_hp_bar.add_theme_stylebox_override("background", bg_style)
-		boss_hp_bar.add_theme_stylebox_override("fill", boss_hp_fill_style)
-		boss_hp_bar.add_theme_stylebox_override("fg", boss_hp_fill_style)
-		boss.add_child(boss_hp_bar)
-	
-	add_child(boss)
 	return boss
 
 # Missing Handlers Restored
@@ -836,18 +660,6 @@ func message_log(msg: String) -> void:
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
 	return ActionFactory.create_action(id, actor, targets)
 
-func _setup_background() -> void:
-	var bg_path = "res://assets/sprites/environment/env_sprite_dungeon_corridor.png"
-	if not ResourceLoader.exists(bg_path):
-		return
-	var bg = Sprite2D.new()
-	var tex = load(bg_path)
-	bg.texture = tex
-	bg.position = Vector2(0, 0)
-	bg.centered = false
-	# Background now matches viewport size (1152x648), so no scaling needed.
-	bg.z_index = -10
-	add_child(bg)
 
 
 func _update_status_label(lines: Array) -> void:
@@ -1086,12 +898,7 @@ func _start_global_idle_all() -> void:
 	animation_controller.start_global_idle_all()
 
 func _apply_active_name_style(label: Label, is_active: bool) -> void:
-	if is_active:
-		label.modulate = ACTIVE_NAME_COLOR
-		label.add_theme_font_size_override("font_size", ACTIVE_NAME_FONT_SIZE)
-	else:
-		label.modulate = INACTIVE_NAME_COLOR
-		label.add_theme_font_size_override("font_size", INACTIVE_NAME_FONT_SIZE)
+	renderer.apply_name_style(label, is_active)
 
 func _update_active_character_highlight(active_id: String) -> void:
 	for actor_id in actor_name_labels.keys():

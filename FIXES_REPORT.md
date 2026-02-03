@@ -142,11 +142,20 @@ Extracted ~430 lines of UI logic from `battle_scene.gd`:
 - Overlays: phase transition, limit break animations
 - Enemy intent display
 
-### Phase 3-8: Remaining (PLANNED)
+### Phase 3: BattleRenderer (COMPLETE)
+**File:** [battle_renderer.gd](scripts/battle/battle_renderer.gd)
+
+Extracted ~250 lines of visual creation logic from `battle_scene.gd`:
+- Character/Boss visual creation with sprites, name labels
+- Boss HP bar creation with styling
+- Background sprite setup
+- Position constants (HERO_POSITIONS, BOSS_POSITION)
+- Actor dictionary management (sprites, nodes, positions, modulates)
+
+### Phase 4-8: Remaining (PLANNED)
 
 | Phase | Component | Status |
 |-------|-----------|--------|
-| 3 | BattleRenderer | Pending |
 | 4 | Character Data Resources | Pending |
 | 5 | Action Data Resources | Pending |
 | 6 | ActionResolver | Pending |
@@ -189,6 +198,7 @@ The following items require additional architectural work:
 | target_cursor.gd | Removed print statements |
 | **battle_animation_controller.gd** | **NEW** - Animation logic extracted from battle_scene.gd |
 | **battle_ui_manager.gd** | **NEW** - UI logic extracted from battle_scene.gd |
+| **battle_renderer.gd** | **NEW** - Visual creation logic extracted from battle_scene.gd |
 
 ---
 
