@@ -152,15 +152,15 @@ Extracted ~250 lines of visual creation logic from `battle_scene.gd`:
 - Position constants (HERO_POSITIONS, BOSS_POSITION)
 - Actor dictionary management (sprites, nodes, positions, modulates)
 
-### Phase 4-8: Remaining (PLANNED)
+### Phase 4-8: Remaining (Reprioritized)
 
-| Phase | Component | Status |
-|-------|-----------|--------|
-| 4 | Character Data Resources | Pending |
-| 5 | Action Data Resources | Pending |
-| 6 | ActionResolver | Pending |
-| 7 | TurnManager & StatusProcessor | Pending |
-| 8 | Boss AI Resources | Pending |
+| Priority | Phase | Component | Notes |
+|----------|-------|-----------|-------|
+| HIGH | 6 | ActionResolver | ~450 lines from battle_manager.gd |
+| HIGH | 7 | TurnManager + StatusProcessor | ~220 lines, completes battle_manager split |
+| MEDIUM | 4 | Character Data Resources | Data-driven design (.tres files) |
+| MEDIUM | 5 | Action Data Resources | 34 action .tres files |
+| LOW | 8 | Boss AI Resources | Phase/rotation config in .tres |
 
 ---
 

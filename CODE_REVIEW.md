@@ -417,28 +417,59 @@ $PhaseOverlayAnimator.play("phase_transition")
 
 ---
 
-## Priority Action Items
+## Status: Completed Fixes
 
-| Priority | Issue | File | Line |
-|----------|-------|------|------|
-| P0 | Duplicate phase transition logic | ai_controller.gd | 140-145 |
-| P0 | Wrong threat selection logic | ai_controller.gd | 89-102 |
-| P0 | Inconsistent BLESS casing | status_effect_ids.gd | 14 |
-| P1 | Null safety in damage calc | damage_calculator.gd | 6 |
-| P1 | Memory leak - orphan tweens | battle_scene.gd | 1330 |
-| P2 | O(n) actor lookups | battle_manager.gd | 876-883 |
-| P2 | Magic numbers | Multiple | - |
-| P3 | File size / god class | battle_scene.gd | - |
-| P3 | Unused code cleanup | action_factory.gd | 166 |
+| Priority | Issue | Status |
+|----------|-------|--------|
+| P0 | Duplicate phase transition logic | ✅ FIXED |
+| P0 | Wrong threat selection logic | ✅ FIXED |
+| P0 | Inconsistent BLESS casing | ✅ FIXED |
+| P1 | Null safety in damage calc | ✅ FIXED |
+| P1 | Memory leak - orphan tweens | ✅ FIXED |
+| P2 | O(n) actor lookups | ✅ FIXED |
+| P2 | Magic numbers | ✅ FIXED |
+| P3 | Unused code cleanup | ✅ FIXED |
+| P3 | Typo BOS_GREAXE_SLAM | ✅ FIXED |
+| P3 | Print statements | ✅ FIXED |
+
+---
+
+## God Class Refactoring Progress
+
+**battle_scene.gd:** 1555 → 948 lines (-39%)
+
+| Phase | Component | Lines | Status |
+|-------|-----------|-------|--------|
+| 1 | BattleAnimationController | ~280 | ✅ Complete |
+| 2 | BattleUIManager | ~430 | ✅ Complete |
+| 3 | BattleRenderer | ~250 | ✅ Complete |
+
+---
+
+## Remaining Refactors (Reprioritized)
+
+| Priority | Phase | Component | Impact | Notes |
+|----------|-------|-----------|--------|-------|
+| HIGH | 6 | ActionResolver | ~450 lines from battle_manager.gd | Biggest remaining god class reduction |
+| HIGH | 7 | TurnManager + StatusProcessor | ~220 lines from battle_manager.gd | Completes battle_manager.gd split |
+| MEDIUM | 4 | Character Data Resources | Data-driven design | Nice-to-have, enables designer editing |
+| MEDIUM | 5 | Action Data Resources | Data-driven design | 34 .tres files, reduces ActionFactory |
+| LOW | 8 | Boss AI Resources | Data-driven design | Enables phase/rotation config in .tres |
+
+**Recommendation:** Prioritize Phase 6-7 to split battle_manager.gd before data-driven phases.
+
+---
+
+## Deferred Items (Low Priority)
+
+- Code order convention (signals/enums/constants/vars ordering)
+- Typed arrays `Array[Character]`
+- Scene composition for UI (party_status_panel.tscn, etc.)
+- AnimationPlayer for complex sequences
+- Unique node names (`%NodeName`)
 
 ---
 
 ## Conclusion
 
-The Sanctuary POC demonstrates solid architecture fundamentals with a clear separation of concerns and good use of Godot's signal system. The main areas needing attention are:
-
-1. **Bug fixes** (phase logic duplication, threat selection, ID casing)
-2. **Performance** (actor lookup optimization)
-3. **Maintainability** (split large files, add constants, remove magic numbers)
-
-For a POC, the code is well-organized and functional. Addressing the P0/P1 issues before production is essential.
+All critical bugs (P0-P1) and performance issues (P2) are resolved. God class refactoring is 60% complete for battle_scene.gd. The codebase is significantly cleaner and more maintainable. Remaining work focuses on architectural improvements rather than bug fixes.
