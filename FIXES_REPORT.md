@@ -120,23 +120,52 @@ const RIPOSTE_PROC_CHANCE := 0.5
 
 ---
 
-## Remaining Items (Not Fixed)
+## God Class Refactoring (In Progress)
 
-The following items from the code review require more significant architectural changes and are deferred:
+Architectural refactoring to split god classes into focused, single-responsibility components.
 
-### Large-Scale Refactoring (P3)
+### Phase 1: BattleAnimationController (COMPLETE)
+**File:** [battle_animation_controller.gd](scripts/battle/battle_animation_controller.gd)
 
-1. **God Class Pattern** - `battle_scene.gd` (1500+ lines) and `battle_manager.gd` (1000+ lines) should be split into smaller classes. This requires significant architectural work:
-   - `BattleScene` -> `BattleRenderer`, `BattleUIManager`, `BattleAnimationController`
-   - `BattleManager` -> `ActionResolver`, `TurnManager`, `StatusProcessor`
+Extracted ~280 lines of animation logic from `battle_scene.gd`:
+- Tween management: idle wiggle, action whip, hit shake, damage flash
+- Floating text: damage numbers, status tick text
+- Visual effects: poison tint, global idle breathing
+- Tween cleanup for KO'd actors and battle end
 
-2. **Hardcoded Character Data** - Character definitions are hardcoded in `_ready()`. Moving to Resource files (`.tres`) would enable data-driven design.
+### Phase 2: BattleUIManager (COMPLETE)
+**File:** [battle_ui_manager.gd](scripts/battle/battle_ui_manager.gd)
 
-3. **Missing `@onready` for Node References** - Many UI nodes are manually assigned. Consider using scenes for complex UI.
+Extracted ~430 lines of UI logic from `battle_scene.gd`:
+- Debug UI: panel, log, toggle button
+- Game UI: party status, turn order, combat log, status effects
+- Overlays: phase transition, limit break animations
+- Enemy intent display
 
-4. **Code Order Convention** - Variables and methods could be reordered to follow GDScript convention (signals, enums, constants, exports, vars, @onready, methods).
+### Phase 3-8: Remaining (PLANNED)
 
-5. **Typed Arrays** - Could use `Array[Character]` syntax for better type safety.
+| Phase | Component | Status |
+|-------|-----------|--------|
+| 3 | BattleRenderer | Pending |
+| 4 | Character Data Resources | Pending |
+| 5 | Action Data Resources | Pending |
+| 6 | ActionResolver | Pending |
+| 7 | TurnManager & StatusProcessor | Pending |
+| 8 | Boss AI Resources | Pending |
+
+---
+
+## Remaining Items (Deferred)
+
+The following items require additional architectural work:
+
+### Code Organization (P3)
+
+1. **Missing `@onready` for Node References** - Many UI nodes are manually assigned. Consider using scenes for complex UI.
+
+2. **Code Order Convention** - Variables and methods could be reordered to follow GDScript convention (signals, enums, constants, exports, vars, @onready, methods).
+
+3. **Typed Arrays** - Could use `Array[Character]` syntax for better type safety.
 
 ### Recommendations for Future Work
 
@@ -153,11 +182,13 @@ The following items from the code review require more significant architectural 
 | ai_controller.gd | Removed `_update_phase()`, fixed `_select_highest_threat()` |
 | status_effect_ids.gd | Fixed BLESS casing |
 | damage_calculator.gd | Added null safety, added constants |
-| battle_scene.gd | Added tween cleanup, removed prints, fixed whitespace |
+| battle_scene.gd | Added tween cleanup, removed prints, delegated to controllers |
 | battle_manager.gd | Added actor lookup cache, added constants, fixed typo reference |
 | action_factory.gd | Removed unused function, fixed typo reference |
 | action_ids.gd | Removed unused constants, fixed typo |
 | target_cursor.gd | Removed print statements |
+| **battle_animation_controller.gd** | **NEW** - Animation logic extracted from battle_scene.gd |
+| **battle_ui_manager.gd** | **NEW** - UI logic extracted from battle_scene.gd |
 
 ---
 
