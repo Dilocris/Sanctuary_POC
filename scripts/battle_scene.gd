@@ -20,6 +20,10 @@ var target_cursor: Node2D
 var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END
 var active_player_id = ""
 var battle_over: bool = false
+const ACTOR_Y_OFFSET := 0.0
+const BOSS_Y_OFFSET := 0.0
+const ACTOR_SCALE := 2.0
+const BOSS_SCALE := 2.0
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
@@ -36,6 +40,9 @@ func _ready() -> void:
 	
 	# Setup Game UI
 	_setup_game_ui()
+
+	# Background
+	_setup_background()
 
 	# Instantiate UI
 	battle_menu = BattleMenuScene.instantiate()
@@ -64,7 +71,7 @@ func _ready() -> void:
 			"display_name": "Kairus",
 			"stats": {"hp_max": 450, "mp_max": 60, "atk": 62, "def": 42, "mag": 28, "spd": 55},
 			"resources": {"ki": {"current": 6, "max": 6}},
-			"position": Vector2(800, 150),
+			"position": Vector2(735, 326),
 			"color": Color(0.5, 0, 0.5) # Purple
 		}),
 		_make_character({
@@ -72,7 +79,7 @@ func _ready() -> void:
 			"display_name": "Ludwig",
 			"stats": {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34},
 			"resources": {"superiority_dice": {"current": 4, "max": 4}},
-			"position": Vector2(850, 220),
+			"position": Vector2(607, 250),
 			"color": Color.GRAY # Gray
 		}),
 		_make_character({
@@ -80,7 +87,7 @@ func _ready() -> void:
 			"display_name": "Ninos",
 			"stats": {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42},
 			"resources": {"bardic_inspiration": {"current": 4, "max": 4}},
-			"position": Vector2(800, 290),
+			"position": Vector2(802, 208),
 			"color": Color.GREEN # Green
 		}),
 		_make_character({
@@ -88,7 +95,7 @@ func _ready() -> void:
 			"display_name": "Catraca",
 			"stats": {"hp_max": 360, "mp_max": 120, "atk": 30, "def": 32, "mag": 68, "spd": 40},
 			"resources": {"sorcery_points": {"current": 5, "max": 5}},
-			"position": Vector2(850, 360),
+			"position": Vector2(895, 280),
 			"color": Color.RED # Red
 		})
 	]
@@ -99,7 +106,7 @@ func _ready() -> void:
 			"display_name": "Marcus Gelt",
 			"stats": {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38},
 			"phase": 1,
-			"position": Vector2(250, 250),
+			"position": Vector2(286, 248),
 			"color": Color.BLACK # Black
 		})
 	]
@@ -124,20 +131,44 @@ func _make_character(data: Dictionary) -> Character:
 	var character = Character.new()
 	character.setup(data)
 	if data.has("position"):
-		character.position = data["position"]
+		character.position = data["position"] + Vector2(0, ACTOR_Y_OFFSET)
 	
 	# Add Visuals
-	var color = data.get("color", Color.WHITE)
-	var visual = ColorRect.new()
-	visual.size = Vector2(40, 40)
-	visual.position = Vector2(-20, -20) # Center
-	visual.color = color
-	character.add_child(visual)
+	var sprite_path = ""
+	var sprite_size = Vector2(40, 40)
+	match data.get("id", ""):
+		"kairus":
+			sprite_path = "res://assets/sprites/characters/kairus_sprite_main.png"
+		"catraca":
+			sprite_path = "res://assets/sprites/characters/catraca_sprite_main.png"
+		"ninos":
+			sprite_path = "res://assets/sprites/characters/ninos_sprite_main.png"
+		"ludwig":
+			sprite_path = "res://assets/sprites/characters/Ludwig_sprite_main.png"
+	if sprite_path != "":
+		var sprite = Sprite2D.new()
+		sprite.texture = load(sprite_path)
+		sprite.centered = false
+		sprite.position = Vector2(0, 0)
+		sprite.scale = Vector2(ACTOR_SCALE, ACTOR_SCALE)
+		if sprite.texture:
+			sprite_size = sprite.texture.get_size() * ACTOR_SCALE
+		character.add_child(sprite)
+	else:
+		var color = data.get("color", Color.WHITE)
+		var visual = ColorRect.new()
+		visual.size = Vector2(40, 40)
+		visual.position = Vector2(-20, -20) # Center
+		visual.color = color
+		character.add_child(visual)
+		sprite_size = visual.size
 	
 	# Add Name Label above head
 	var name_lbl = Label.new()
 	name_lbl.text = data.get("display_name", "")
-	name_lbl.position = Vector2(-30, -50)
+	name_lbl.position = Vector2(0, sprite_size.y + 4)
+	name_lbl.size = Vector2(max(sprite_size.x, 80), 20)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	character.add_child(name_lbl)
 	
 	add_child(character)
@@ -148,20 +179,50 @@ func _make_boss(data: Dictionary) -> Boss:
 	var boss = Boss.new()
 	boss.setup(data)
 	if data.has("position"):
-		boss.position = data["position"]
+		boss.position = data["position"] + Vector2(0, BOSS_Y_OFFSET)
 		
 	# Add Visuals (Larger for boss)
-	var color = data.get("color", Color.BLACK)
-	var visual = ColorRect.new()
-	visual.size = Vector2(80, 80)
-	visual.position = Vector2(-40, -40) # Center
-	visual.color = color
-	boss.add_child(visual)
-	
-	var name_lbl = Label.new()
-	name_lbl.text = data.get("display_name", "")
-	name_lbl.position = Vector2(-40, -70)
-	boss.add_child(name_lbl)
+	var sprite_path = "res://assets/sprites/characters/marcus_sprite_main.png"
+	if ResourceLoader.exists(sprite_path):
+		var sprite = Sprite2D.new()
+		sprite.texture = load(sprite_path)
+		var tex_size = sprite.texture.get_size()
+		sprite.centered = false
+		sprite.position = Vector2(0, 0)
+		sprite.scale = Vector2(BOSS_SCALE, BOSS_SCALE)
+		boss.add_child(sprite)
+		
+		var name_lbl = Label.new()
+		name_lbl.text = data.get("display_name", "")
+		var scaled_size = tex_size * BOSS_SCALE
+		name_lbl.position = Vector2(0, scaled_size.y + 6)
+		name_lbl.size = Vector2(max(scaled_size.x, 120), 20)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss.add_child(name_lbl)
+		
+		boss_hp_label = Label.new()
+		boss_hp_label.position = Vector2(0, name_lbl.position.y + 20)
+		boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss_hp_label.size = Vector2(max(scaled_size.x, 120), 24)
+		boss.add_child(boss_hp_label)
+	else:
+		var color = data.get("color", Color.BLACK)
+		var visual = ColorRect.new()
+		visual.size = Vector2(80, 80)
+		visual.position = Vector2(0, 0) # Top-left
+		visual.color = color
+		boss.add_child(visual)
+		var name_lbl = Label.new()
+		name_lbl.text = data.get("display_name", "")
+		name_lbl.position = Vector2(0, visual.size.y + 6)
+		name_lbl.size = Vector2(max(visual.size.x, 120), 20)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss.add_child(name_lbl)
+		boss_hp_label = Label.new()
+		boss_hp_label.position = Vector2(0, name_lbl.position.y + 20)
+		boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		boss_hp_label.size = Vector2(max(visual.size.x, 120), 24)
+		boss.add_child(boss_hp_label)
 	
 	add_child(boss)
 	return boss
@@ -538,6 +599,20 @@ func _setup_debug_ui() -> void:
 	add_child(debug_toggle_btn)
 
 
+func _setup_background() -> void:
+	var bg_path = "res://assets/sprites/environment/env_sprite_dungeon_corridor.png"
+	if not ResourceLoader.exists(bg_path):
+		return
+	var bg = Sprite2D.new()
+	var tex = load(bg_path)
+	bg.texture = tex
+	bg.position = Vector2(0, 0)
+	bg.centered = false
+	# Background now matches viewport size (1152x648), so no scaling needed.
+	bg.z_index = -10
+	add_child(bg)
+
+
 func _setup_game_ui() -> void:
 	# Party Status Panel (Bottom Right)
 	var panel_bg = Panel.new()
@@ -582,12 +657,7 @@ func _setup_game_ui() -> void:
 	add_child(combat_log_display)
 	
 	# Boss HP (Below Boss)
-	boss_hp_label = Label.new()
-	boss_hp_label.position = Vector2(250, 310) # Roughly below boss
-	boss_hp_label.size = Vector2(200, 30)
-	boss_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	boss_hp_label.text = "Boss HP"
-	add_child(boss_hp_label)
+	# Boss HP label is attached to boss in _make_boss()
 
 	# Battle Log Panel (Left side)
 	battle_log_panel = RichTextLabel.new()
@@ -658,7 +728,7 @@ func _update_status_label(lines: Array) -> void:
 		var enemies = battle_manager.get_alive_enemies()
 		if enemies.size() > 0:
 			var boss = enemies[0]
-			boss_hp_label.text = "%s HP: %d/%d" % [boss.display_name, boss.hp_current, boss.stats["hp_max"]]
+			boss_hp_label.text = "%d/%d" % [boss.hp_current, boss.stats["hp_max"]]
 		else:
 			boss_hp_label.text = "Victory?"
 			
