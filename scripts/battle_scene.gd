@@ -61,17 +61,37 @@ const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
 
 var ai_controller: AiController
 var animation_controller: BattleAnimationController
+var ui_manager: BattleUIManager
 
 
 func _ready() -> void:
 	battle_manager = BattleManager.new()
 	add_child(battle_manager)
 
+	# Setup UI Manager
+	ui_manager = BattleUIManager.new()
+	ui_manager.setup(self, battle_manager, enemy_intent_duration)
+	ui_manager.phase_overlay_finished.connect(_on_phase_overlay_finished)
+
 	# Setup Debug UI
-	_setup_debug_ui()
-	
+	ui_manager.create_debug_ui()
+	debug_panel = ui_manager.debug_panel
+	debug_log = ui_manager.debug_log
+	debug_toggle_btn = ui_manager.debug_toggle_btn
+
 	# Setup Game UI
-	_setup_game_ui()
+	ui_manager.create_game_ui()
+	party_status_panel = ui_manager.party_status_panel
+	status_effects_display = ui_manager.status_effects_display
+	turn_order_display = ui_manager.turn_order_display
+	combat_log_display = ui_manager.combat_log_display
+	enemy_intent_label = ui_manager.enemy_intent_label
+	enemy_intent_bg = ui_manager.enemy_intent_bg
+	phase_overlay = ui_manager.phase_overlay
+	phase_label = ui_manager.phase_label
+	limit_overlay = ui_manager.limit_overlay
+	limit_label = ui_manager.limit_label
+	battle_log_panel = ui_manager.battle_log_panel
 
 	# Background
 	_setup_background()
@@ -400,21 +420,7 @@ func _on_active_character_changed(actor_id: String) -> void:
 	_update_active_idle_motion(actor_id)
 
 func _update_turn_order_visual() -> void:
-	if not turn_order_display: return
-	var order = battle_manager.battle_state.get("turn_order", [])
-	var active = battle_manager.battle_state.get("active_character_id", "")
-	if order.is_empty(): return
-	
-	# Rotate for display: Find active, display from there wrapping around
-	var display_order = []
-	var start_index = order.find(active)
-	if start_index == -1: 
-		display_order = order # Fallback
-	else:
-		# Slice from start to end, then 0 to start
-		display_order = order.slice(start_index, order.size()) + order.slice(0, start_index)
-	
-	turn_order_display.text = "Turn Order: " + " > ".join(display_order)
+	ui_manager.update_turn_order_visual()
 
 
 
@@ -515,75 +521,18 @@ func _on_phase_changed(phase: int) -> void:
 	_show_phase_overlay(phase)
 
 func _show_phase_overlay(phase: int) -> void:
-	var text = "PHASE " + str(phase)
-	if phase == 2:
-		text = "PHASE 2 - THE SYMBIOTE AWAKENS"
-	elif phase == 3:
-		text = "PHASE 3 - DESPERATION"
-	if phase_label:
-		phase_label.text = text
-	if phase_overlay:
-		phase_overlay.visible = true
-	if phase_label:
-		phase_label.visible = true
-	var tween = create_tween()
-	phase_overlay.modulate.a = 0.0
-	phase_label.modulate.a = 0.0
-	tween.tween_property(phase_overlay, "modulate:a", 1.0, 0.4)
-	tween.tween_property(phase_label, "modulate:a", 1.0, 0.4)
-	tween.tween_interval(1.6)
-	tween.tween_property(phase_overlay, "modulate:a", 0.0, 0.5)
-	tween.tween_property(phase_label, "modulate:a", 0.0, 0.5)
-	tween.tween_callback(func ():
-		if phase_overlay:
-			phase_overlay.visible = false
-		if phase_label:
-			phase_label.visible = false
-		if state == "PLAYER_TURN":
-			input_locked = false
-			var actor = battle_manager.get_actor_by_id(active_player_id)
-			if actor:
-				battle_menu.set_enabled(true)
-				battle_menu.setup(actor)
-	)
+	ui_manager.show_phase_overlay(phase)
+
+func _on_phase_overlay_finished() -> void:
+	if state == "PLAYER_TURN":
+		input_locked = false
+		var actor = battle_manager.get_actor_by_id(active_player_id)
+		if actor:
+			battle_menu.set_enabled(true)
+			battle_menu.setup(actor)
 
 func _show_limit_overlay(action_id: String) -> void:
-	var text = "LIMIT BREAK"
-	var color = Color(1, 0.6, 0.2)
-	match action_id:
-		ActionIds.KAI_LIMIT:
-			text = "INFERNO FIST"
-			color = Color(1.0, 0.4, 0.2)
-		ActionIds.LUD_LIMIT:
-			text = "DRAGONFIRE ROAR"
-			color = Color(1.0, 0.5, 0.1)
-		ActionIds.NINOS_LIMIT:
-			text = "SIREN'S CALL"
-			color = Color(0.2, 0.7, 1.0)
-		ActionIds.CAT_LIMIT:
-			text = "GENIE'S WRATH"
-			color = Color(1.0, 0.2, 0.8)
-	if limit_label:
-		limit_label.text = text
-		limit_label.modulate = color
-	if limit_overlay:
-		limit_overlay.visible = true
-	if limit_label:
-		limit_label.visible = true
-	var tween = create_tween()
-	limit_overlay.modulate.a = 0.0
-	limit_label.modulate.a = 0.0
-	tween.tween_property(limit_overlay, "modulate:a", 0.8, 0.25)
-	tween.tween_property(limit_label, "modulate:a", 1.0, 0.25)
-	tween.tween_interval(0.6)
-	tween.tween_property(limit_overlay, "modulate:a", 0.0, 0.35)
-	tween.tween_property(limit_label, "modulate:a", 0.0, 0.35)
-	tween.tween_callback(func ():
-		if limit_overlay:
-			limit_overlay.visible = false
-		if limit_label:
-			limit_label.visible = false
-	)
+	ui_manager.show_limit_overlay(action_id)
 
 
 
@@ -666,15 +615,7 @@ func _telegraph_enemy_intent(actor: Boss) -> Signal:
 	return get_tree().create_timer(enemy_intent_duration).timeout
 
 func _show_enemy_intent(text: String) -> void:
-	if enemy_intent_label == null:
-		return
-	enemy_intent_label.text = text
-	enemy_intent_label.visible = true
-	var tween = create_tween()
-	enemy_intent_label.modulate.a = 1.0
-	tween.tween_interval(enemy_intent_duration)
-	tween.tween_property(enemy_intent_label, "modulate:a", 0.0, 0.3)
-	tween.tween_callback(func (): enemy_intent_label.visible = false)
+	ui_manager.show_enemy_intent(text)
 
 
 func _on_menu_action_selected(action_id: String) -> void:
@@ -895,27 +836,6 @@ func message_log(msg: String) -> void:
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
 	return ActionFactory.create_action(id, actor, targets)
 
-# --- UI Construction ---
-func _setup_debug_ui() -> void:
-	# Container for all debug clutter
-	debug_panel = Control.new()
-	debug_panel.name = "DebugPanel"
-	debug_panel.visible = false # Hidden by default
-	add_child(debug_panel)
-	
-	debug_log = RichTextLabel.new()
-	debug_log.name = "DebugLog"
-	debug_log.position = Vector2(0, 0)
-	debug_log.size = Vector2(400, 200)
-	debug_panel.add_child(debug_log)
-	
-	debug_toggle_btn = Button.new()
-	debug_toggle_btn.text = "Debug"
-	debug_toggle_btn.position = Vector2(10, 10)
-	debug_toggle_btn.pressed.connect(func(): debug_panel.visible = !debug_panel.visible)
-	add_child(debug_toggle_btn)
-
-
 func _setup_background() -> void:
 	var bg_path = "res://assets/sprites/environment/env_sprite_dungeon_corridor.png"
 	if not ResourceLoader.exists(bg_path):
@@ -928,122 +848,6 @@ func _setup_background() -> void:
 	# Background now matches viewport size (1152x648), so no scaling needed.
 	bg.z_index = -10
 	add_child(bg)
-
-
-func _setup_game_ui() -> void:
-	# Lower UI background
-	var lower_ui_bg = ColorRect.new()
-	lower_ui_bg.color = Color(0, 0, 0, 0.6)
-	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 24)
-	lower_ui_bg.size = Vector2(1152, 176)
-	lower_ui_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(lower_ui_bg)
-
-	# Party Status Panel (Bottom Right)
-	var panel_bg = Panel.new()
-	panel_bg.position = Vector2(620, LOWER_UI_TOP)
-	panel_bg.size = Vector2(520, 140)
-	add_child(panel_bg)
-	
-	party_status_panel = VBoxContainer.new()
-	party_status_panel.position = Vector2(12, 12)
-	party_status_panel.size = Vector2(496, 116)
-	party_status_panel.add_theme_constant_override("separation", 6)
-	panel_bg.add_child(party_status_panel)
-	
-	# Turn Order Display (Top Center)
-	turn_order_display = Label.new()
-	turn_order_display.position = Vector2(350, 10)
-	turn_order_display.size = Vector2(400, 30)
-	turn_order_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(turn_order_display)
-
-	# Status Effects Display (Centered below Turn Order)
-	status_effects_display = Label.new()
-	status_effects_display.position = Vector2(350, 40)
-	status_effects_display.size = Vector2(400, 30) 
-	status_effects_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(status_effects_display)
-	
-	# Combat Log Toast (Above Bottom UI)
-	combat_log_display = Label.new()
-	combat_log_display.position = Vector2(200, 458)
-	combat_log_display.size = Vector2(700, 30)
-	combat_log_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	combat_log_display.text = "Battle Start!"
-	
-	# Optional: Add a semi-transparent background for readability
-	var bg = ColorRect.new()
-	bg.show_behind_parent = true
-	bg.color = Color(0, 0, 0, 0.5)
-	bg.anchor_right = 1.0
-	bg.anchor_bottom = 1.0
-	combat_log_display.add_child(bg)
-	
-	add_child(combat_log_display)
-
-	# Enemy Intent (Top Center)
-	enemy_intent_label = Label.new()
-	enemy_intent_label.position = Vector2(260, 74)
-	enemy_intent_label.size = Vector2(640, 30)
-	enemy_intent_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	enemy_intent_label.visible = false
-	enemy_intent_label.modulate = Color(1, 0.9, 0.6)
-	enemy_intent_bg = ColorRect.new()
-	enemy_intent_bg.show_behind_parent = true
-	enemy_intent_bg.color = Color(0, 0, 0, 0.55)
-	enemy_intent_bg.anchor_right = 1.0
-	enemy_intent_bg.anchor_bottom = 1.0
-	enemy_intent_label.add_child(enemy_intent_bg)
-	add_child(enemy_intent_label)
-
-	# Phase Overlay
-	phase_overlay = ColorRect.new()
-	phase_overlay.color = Color(0.2, 0.0, 0.2, 0.65)
-	phase_overlay.position = Vector2(0, 0)
-	phase_overlay.size = Vector2(1152, 648)
-	phase_overlay.visible = false
-	phase_overlay.z_index = 100
-	add_child(phase_overlay)
-	phase_label = Label.new()
-	phase_label.text = ""
-	phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	phase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	phase_label.size = Vector2(1152, 648)
-	phase_label.add_theme_font_size_override("font_size", 28)
-	phase_label.visible = false
-	phase_label.z_index = 101
-	add_child(phase_label)
-
-	# Limit Overlay
-	limit_overlay = ColorRect.new()
-	limit_overlay.color = Color(0.0, 0.0, 0.0, 0.55)
-	limit_overlay.position = Vector2(0, 0)
-	limit_overlay.size = Vector2(1152, 648)
-	limit_overlay.visible = false
-	limit_overlay.z_index = 110
-	add_child(limit_overlay)
-	limit_label = Label.new()
-	limit_label.text = ""
-	limit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	limit_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	limit_label.size = Vector2(1152, 648)
-	limit_label.add_theme_font_size_override("font_size", 30)
-	limit_label.visible = false
-	limit_label.z_index = 111
-	add_child(limit_label)
-	
-	# Boss HP (Below Boss)
-	# Boss HP label is attached to boss in _make_boss()
-
-	# Battle Log Panel (Left side)
-	battle_log_panel = RichTextLabel.new()
-	battle_log_panel.position = Vector2(10, 10)
-	battle_log_panel.size = Vector2(320, 160)
-	battle_log_panel.scroll_active = false
-	battle_log_panel.scroll_following = true
-	battle_log_panel.add_theme_font_size_override("normal_font_size", 12)
-	add_child(battle_log_panel)
 
 
 func _update_status_label(lines: Array) -> void:
