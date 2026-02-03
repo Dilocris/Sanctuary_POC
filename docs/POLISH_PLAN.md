@@ -240,6 +240,17 @@ Feedback Priority (When Effects Overlap)
 - Secondary: magnitude cue (heavy, crit, finisher).
 - Tertiary: state cue (low HP, buff/debuff).
 
+Full-Screen Event Timing (Phase Changes, Limit Breaks)
+- Define a moment-to-moment event sequence so overlapping full-screen events never collide.
+- Example sequence: player action impact -> outcome feedback -> full-screen event trigger -> phase change banner -> return to normal flow.
+- If two full-screen events trigger at once, queue them with a minimum gap and preserve readability.
+- Ensure full-screen transitions do not suppress critical combat feedback.
+
+Floaters Readability (Damage + Status)
+- Re-evaluate size, contrast, and stacking so numbers remain readable during bursts.
+- Limit simultaneous floaters per target; combine or summarize where possible.
+- Keep status floaters distinct from damage (icon or label differentiation).
+
 Low-FX Mode Minimum Set
 - Outcome text or icon (hit/miss/block/crit).
 - HP bar immediate drop plus yellow drain.
