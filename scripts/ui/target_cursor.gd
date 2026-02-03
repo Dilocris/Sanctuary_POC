@@ -56,7 +56,6 @@ func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 	valid_targets = targets
 	selector_mode = mode
 	if valid_targets.is_empty():
-		print("TargetCursor: No valid targets!")
 		emit_signal("selection_canceled")
 		return
 	
@@ -127,10 +126,9 @@ func _update_position() -> void:
 			global_position = target.global_position + Vector2(0, -50) # Point above head
 		_set_highlight(target)
 	else:
-		# Fallback if characters aren't spatial, just print for now or use mock positions
-		# Since the harness is pure logic Node based, we might not have positions!
-		# We need to give them mocked positions in the BattleScene for the cursor to work visually.
-		print("Cursor targeting: ", target.name) 
+		# Fallback if characters aren't spatial
+		# Characters without spatial properties can't have cursor positioned
+		pass 
 
 func _confirm_selection() -> void:
 	if selector_mode == "ALL":

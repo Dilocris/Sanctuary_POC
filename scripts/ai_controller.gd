@@ -2,7 +2,7 @@ extends RefCounted
 class_name AiController
 
 func get_next_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
-	_update_phase(boss)
+	# Phase transitions are handled by BattleManager._check_boss_phase_transition()
 	if boss.phase == 1:
 		return _phase_one_action(boss, battle_state)
 	if boss.phase == 2:
@@ -88,17 +88,22 @@ func _phase_three_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
 
 func _select_highest_threat(party: Array) -> String:
 	var ludwig = _find_by_id(party, "ludwig")
-	if ludwig != null and ludwig.has_status(StatusEffectIds.GUARD_STANCE):
-		return "ludwig"
+	var ludwig_in_guard = ludwig != null and ludwig.has_status(StatusEffectIds.GUARD_STANCE)
 	var best_id = ""
 	var best_atk = -1
 	for member in party:
 		if member.hp_current <= 0:
 			continue
+		# Skip Ludwig when he's in Guard Stance (drawing aggro away from party)
+		if member.id == "ludwig" and ludwig_in_guard:
+			continue
 		var atk = member.stats.get("atk", 0)
 		if atk > best_atk:
 			best_atk = atk
 			best_id = member.id
+	# Fallback to Ludwig if no other targets found
+	if best_id == "" and ludwig != null and ludwig.hp_current > 0:
+		return "ludwig"
 	return best_id
 
 
@@ -135,11 +140,3 @@ func _find_by_id(party: Array, id: String) -> Character:
 
 func _increment_marcus_turn(battle_state: Dictionary) -> void:
 	battle_state.flags.marcus_turn_index = battle_state.flags.get("marcus_turn_index", 0) + 1
-
-
-func _update_phase(boss: Boss) -> void:
-	var hp_percent = float(boss.hp_current) / float(boss.stats.get("hp_max", 1)) * 100.0
-	if boss.phase == 1 and hp_percent <= 60.0:
-		boss.phase = 2
-	if boss.phase == 2 and hp_percent <= 30.0:
-		boss.phase = 3

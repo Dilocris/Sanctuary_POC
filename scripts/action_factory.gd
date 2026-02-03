@@ -32,7 +32,7 @@ static func create_action(action_id: String, actor_id: String, targets: Array) -
 		ActionIds.LUD_LIMIT: return ludwig_limit(actor_id)
 		ActionIds.NINOS_LIMIT: return ninos_limit(actor_id)
 		ActionIds.CAT_LIMIT: return catraca_limit(actor_id)
-		ActionIds.BOS_GREAXE_SLAM: return marcus_greataxe_slam(actor_id, t1)
+		ActionIds.BOS_GREATAXE_SLAM: return marcus_greataxe_slam(actor_id, t1)
 		ActionIds.BOS_TENDRIL_LASH: return marcus_tendril_lash(actor_id, t1)
 		ActionIds.BOS_BATTLE_ROAR: return marcus_battle_roar(actor_id)
 		ActionIds.BOS_COLLECTORS_GRASP: return marcus_collectors_grasp(actor_id, t1)
@@ -163,17 +163,6 @@ static func ninos_inspire_attack(actor_id: String, target_id: String) -> Diction
 	}
 
 
-static func ninos_inspire_defense(actor_id: String, target_id: String) -> Dictionary:
-	return {
-		"action_id": ActionIds.NINOS_INSPIRE_DEFENSE,
-		"actor_id": actor_id,
-		"targets": [target_id],
-		"resource_type": "bardic_inspiration",
-		"resource_cost": 1,
-		"tags": [ActionTags.BUFF, ActionTags.RESOURCE, ActionTags.SINGLE]
-	}
-
-
 static func ninos_vicious_mockery(actor_id: String, target_id: String) -> Dictionary:
 	return {
 		"action_id": ActionIds.NINOS_VICIOUS_MOCKERY,
@@ -295,7 +284,7 @@ static func catraca_limit(actor_id: String) -> Dictionary:
 
 static func marcus_greataxe_slam(actor_id: String, target_id: String) -> Dictionary:
 	return {
-		"action_id": ActionIds.BOS_GREAXE_SLAM,
+		"action_id": ActionIds.BOS_GREATAXE_SLAM,
 		"actor_id": actor_id,
 		"targets": [target_id],
 		"multiplier": 1.2,

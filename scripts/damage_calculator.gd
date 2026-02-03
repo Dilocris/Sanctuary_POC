@@ -2,8 +2,17 @@ extends RefCounted
 class_name DamageCalculator
 
 const BASE_CRIT_CHANCE := 0.05
+const GUARD_STANCE_DEF_MULTIPLIER := 1.5
+const MAGE_ARMOR_DEF_MULTIPLIER := 1.5
+const GUARD_STANCE_DAMAGE_REDUCTION := 0.5
+const DEFENSE_FACTOR := 0.5
+const VARIANCE_MIN := 0.90
+const VARIANCE_MAX := 1.10
+const CRIT_MULTIPLIER := 2.0
 
 static func calculate_physical_damage(attacker: Node, defender: Node, multiplier: float) -> int:
+	if attacker == null or defender == null:
+		return 0
 	var atk = attacker.stats.get("atk", 0)
 	var atk_up_stacks = _count_status(attacker, StatusEffectIds.ATK_UP)
 	if atk_up_stacks > 0:
@@ -13,15 +22,15 @@ static func calculate_physical_damage(attacker: Node, defender: Node, multiplier
 		atk *= down_multiplier
 	var defense = defender.stats.get("def", 0)
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
-		defense *= 1.5
+		defense *= GUARD_STANCE_DEF_MULTIPLIER
 	if defender.has_status(StatusEffectIds.MAGE_ARMOR):
-		defense *= 1.5
-	var base = (atk * multiplier) - (defense * 0.5)
-	var variance = base * randf_range(0.90, 1.10)
+		defense *= MAGE_ARMOR_DEF_MULTIPLIER
+	var base = (atk * multiplier) - (defense * DEFENSE_FACTOR)
+	var variance = base * randf_range(VARIANCE_MIN, VARIANCE_MAX)
 
 	var crit = randf() <= BASE_CRIT_CHANCE
 	if crit:
-		variance *= 2.0
+		variance *= CRIT_MULTIPLIER
 
 	if attacker.has_status(StatusEffectIds.FIRE_IMBUE):
 		variance += randi_range(1, 4)
@@ -29,7 +38,7 @@ static func calculate_physical_damage(attacker: Node, defender: Node, multiplier
 		variance += randi_range(1, 4)
 
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
-		variance *= 0.5
+		variance *= GUARD_STANCE_DAMAGE_REDUCTION
 
 	return max(1, int(floor(variance)))
 

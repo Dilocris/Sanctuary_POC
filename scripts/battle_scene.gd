@@ -412,38 +412,21 @@ func _update_turn_order_visual() -> void:
 
 
 
+func _print_turn_order(_order: Array) -> void:
+	# Debug function - prints disabled for production
+	pass
 
 
 
 
 
 
-
-
-
-
-
-
-
-func _print_turn_order(order: Array) -> void:
-	print("Turn order: ", order)
-
-
-
-
-
-
-
-
-
-
-func _on_action_enqueued(action: Dictionary) -> void:
-	print("Action enqueued: ", action)
-	# _update_queue_label() # Queuelabel is deprecated
+func _on_action_enqueued(_action: Dictionary) -> void:
+	# Action enqueued - visual feedback handled elsewhere
+	pass
 
 
 func _on_action_executed(result: Dictionary) -> void:
-	print("Action executed: ", result)
 	var action_id = result.get("action_id", "")
 	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
 		_show_limit_overlay(action_id)
@@ -505,9 +488,11 @@ func _on_action_executed(result: Dictionary) -> void:
 
 
 func _on_battle_ended(result: String) -> void:
-	print("Battle ended: ", result)
 	battle_over = true
 	_update_status_label(["Battle ended: " + result])
+	# Clean up all tweens on battle end
+	for actor_id in actor_sprites.keys():
+		_cleanup_actor_tweens(actor_id)
 
 func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
 	var actor = battle_manager.get_actor_by_id(actor_id)
@@ -1540,3 +1525,30 @@ func _flash_damage_tint(actor_id: String, _amount: int) -> void:
 	tween.tween_interval(0.06)
 	tween.tween_property(visual, "modulate", original, 0.14)
 	actor_flash_tweens[actor_id] = tween
+	# Check if character is now KO'd and clean up tweens
+	var actor = battle_manager.get_actor_by_id(actor_id)
+	if actor != null and actor.is_ko():
+		_cleanup_actor_tweens(actor_id)
+
+
+func _cleanup_actor_tweens(actor_id: String) -> void:
+	# Stop and clean up all tweens for a KO'd actor to prevent memory leaks
+	_stop_idle_wiggle(actor_id)
+	_stop_poison_tint(actor_id)
+	if actor_action_tweens.has(actor_id):
+		var tween = actor_action_tweens[actor_id]
+		if tween:
+			tween.kill()
+		actor_action_tweens.erase(actor_id)
+	if actor_shake_tweens.has(actor_id):
+		var tween = actor_shake_tweens[actor_id]
+		if tween:
+			tween.kill()
+		actor_shake_tweens.erase(actor_id)
+	if actor_flash_tweens.has(actor_id):
+		var tween = actor_flash_tweens[actor_id]
+		if tween:
+			tween.kill()
+		actor_flash_tweens.erase(actor_id)
+	if actor_global_idle_tokens.has(actor_id):
+		actor_global_idle_tokens.erase(actor_id)

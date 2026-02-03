@@ -23,14 +23,21 @@ var battle_state := {
 	"flags": {}
 }
 
+# O(1) actor lookup cache
+var _actor_lookup: Dictionary = {}
+
 const TURN_ORDER_RANDOM_MIN := 0
 const TURN_ORDER_RANDOM_MAX := 5
 const MESSAGE_LOG_LIMIT := 12
 const LIMIT_GAIN_DEALT_DIV := 10.0
 const LIMIT_GAIN_TAKEN_DIV := 5.0
 const LIMIT_GAIN_DOT_DIV := 8.0
+const STUNNING_STRIKE_PROC_CHANCE := 0.5
+const SHIELD_BASH_STUN_CHANCE := 0.4
+const DRAGONFIRE_CHARM_CHANCE := 0.7
+const RIPOSTE_PROC_CHANCE := 0.5
 const ACTION_DISPLAY_NAMES := {
-	ActionIds.BOS_GREAXE_SLAM: "Greataxe Slam",
+	ActionIds.BOS_GREATAXE_SLAM: "Greataxe Slam",
 	ActionIds.BOS_TENDRIL_LASH: "Tendril Lash",
 	ActionIds.BOS_BATTLE_ROAR: "Battle Roar",
 	ActionIds.BOS_COLLECTORS_GRASP: "Collector's Grasp",
@@ -78,6 +85,15 @@ func setup_state(party: Array, enemies: Array) -> void:
 		"boss_cooldowns": {},
 		"boss_phase_announced": 1
 	}
+	_build_actor_lookup()
+
+
+func _build_actor_lookup() -> void:
+	_actor_lookup.clear()
+	for actor in battle_state.party:
+		_actor_lookup[actor.id] = actor
+	for enemy in battle_state.enemies:
+		_actor_lookup[enemy.id] = enemy
 
 
 func calculate_turn_order() -> Array:
@@ -236,7 +252,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			var stun_damage = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0))
 			var applied = false
-			if randf() <= 0.5:
+			if randf() <= STUNNING_STRIKE_PROC_CHANCE:
 				var target = get_actor_by_id(targets[0])
 				if target != null:
 					target.add_status(StatusEffectFactory.stun(1))
@@ -313,7 +329,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			var bash_result = execute_basic_attack(actor_id, targets[0], 1.0)
 			var stunned = false
-			if randf() <= 0.40:
+			if randf() <= SHIELD_BASH_STUN_CHANCE:
 				var target_bash = get_actor_by_id(targets[0])
 				if target_bash != null:
 					target_bash.add_status(StatusEffectFactory.stun(1))
@@ -505,7 +521,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.reset_limit_gauge()
 			add_message(actor.display_name + " unleashes Dragonfire Roar!")
 			for enemy in get_alive_enemies():
-				if randf() <= 0.7:
+				if randf() <= DRAGONFIRE_CHARM_CHANCE:
 					enemy.add_status(StatusEffectFactory.charm(1))
 			for ally in get_alive_party():
 				ally.add_status(StatusEffectFactory.atk_up(3, 0.25))
@@ -548,7 +564,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				add_message(actor.display_name + " prepares Twin Spell.")
 				return ActionResult.new(true, "", {"metamagic": "twin"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
-		ActionIds.BOS_GREAXE_SLAM:
+		ActionIds.BOS_GREATAXE_SLAM:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
@@ -803,7 +819,7 @@ func _try_riposte(attacker: Character, defender: Character) -> void:
 		return
 	if not defender.has_status(StatusEffectIds.GUARD_STANCE):
 		return
-	if randf() > 0.5:
+	if randf() > RIPOSTE_PROC_CHANCE:
 		return
 	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, 0.6)
 	_apply_damage_with_limit(defender, attacker, riposte_dmg)
@@ -874,13 +890,7 @@ func set_phase(new_phase: int) -> void:
 
 
 func get_actor_by_id(actor_id: String) -> Node:
-	for actor in battle_state.party:
-		if actor.id == actor_id:
-			return actor
-	for enemy in battle_state.enemies:
-		if enemy.id == actor_id:
-			return enemy
-	return null
+	return _actor_lookup.get(actor_id, null)
 
 
 func apply_status_to_actor(actor_id: String, status: Variant) -> bool:
