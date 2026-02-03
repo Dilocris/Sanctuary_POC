@@ -27,19 +27,11 @@ var last_logged_turn_id: String = ""
 var actor_sprites: Dictionary = {}
 var actor_name_labels: Dictionary = {}
 var input_cooldown_until_ms: int = 0
-var actor_idle_tweens: Dictionary = {}
 var actor_base_positions: Dictionary = {}
-var actor_action_tweens: Dictionary = {}
-var actor_shake_tweens: Dictionary = {}
-var actor_flash_tweens: Dictionary = {}
 var actor_base_modulates: Dictionary = {}
-var actor_last_hit_at: Dictionary = {}
-var actor_poison_tweens: Dictionary = {}
 var actor_base_self_modulates: Dictionary = {}
 var actor_nodes: Dictionary = {}
 var actor_root_positions: Dictionary = {}
-var actor_global_idle_tweens: Dictionary = {}
-var actor_global_idle_tokens: Dictionary = {}
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
@@ -68,6 +60,7 @@ const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
 
 var ai_controller: AiController
+var animation_controller: BattleAnimationController
 
 
 func _ready() -> void:
@@ -151,6 +144,19 @@ func _ready() -> void:
 			"color": Color.BLACK # Black
 		})
 	]
+
+	# Setup animation controller with references
+	animation_controller = BattleAnimationController.new()
+	animation_controller.setup(
+		self,
+		battle_manager,
+		actor_sprites,
+		actor_base_positions,
+		actor_base_modulates,
+		actor_base_self_modulates,
+		actor_nodes,
+		actor_root_positions
+	)
 
 	battle_manager.setup_state(party, enemies)
 	battle_manager.start_round()
@@ -1240,18 +1246,7 @@ func _update_status_effects_text() -> void:
 
 
 func _create_floating_text(pos: Vector2, text: String, color: Color) -> void:
-	var label = Label.new()
-	label.text = text
-	label.modulate = color
-	label.position = pos + Vector2(0, -50) # Start above character
-	label.add_theme_font_size_override("font_size", 24)
-	add_child(label)
-	
-	# Tween it up and fade out
-	var tween = create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
-	tween.tween_callback(label.queue_free)
+	animation_controller.create_floating_text(pos, text, color)
 
 func _is_party_member(actor_id: String) -> bool:
 	for member in battle_manager.battle_state.party:
@@ -1260,181 +1255,31 @@ func _is_party_member(actor_id: String) -> bool:
 	return false
 
 func _spawn_damage_numbers(target_id: String, damages: Array) -> void:
-	var actor = battle_manager.get_actor_by_id(target_id)
-	if actor == null:
-		return
-	for i in range(damages.size()):
-		var dmg_val = int(damages[i])
-		var delay = float(i) * 0.45
-		var offset = Vector2(10 * i, -6 * i)
-		var timer = get_tree().create_timer(delay)
-		timer.timeout.connect(func ():
-			_create_damage_text(actor.position + offset, str(dmg_val))
-		)
+	animation_controller.spawn_damage_numbers(target_id, damages)
 
 func _create_damage_text(pos: Vector2, text: String) -> void:
-	var label = Label.new()
-	label.text = text
-	label.modulate = Color(1.0, 0.55, 0.1)
-	label.position = pos + Vector2(0, -64)
-	label.add_theme_font_size_override("font_size", 32)
-	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 2)
-	add_child(label)
-	
-	var tween = create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
-	tween.tween_callback(label.queue_free)
+	animation_controller.create_damage_text(pos, text)
 
 func _create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
-	var label = Label.new()
-	label.text = text
-	label.modulate = color
-	label.position = pos + Vector2(0, -40)
-	label.add_theme_font_size_override("font_size", 22)
-	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 2)
-	add_child(label)
-	var tween = create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 30, 0.9)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
-	tween.tween_callback(label.queue_free)
+	animation_controller.create_status_tick_text(pos, text, color)
 
 func _update_active_idle_motion(active_id: String) -> void:
-	for actor_id in actor_sprites.keys():
-		if actor_id == active_id:
-			if _should_delay_idle_after_hit(actor_id):
-				_stop_idle_wiggle(actor_id)
-				_delay_idle_after_recent_hit(actor_id)
-			else:
-				_start_idle_wiggle(actor_id)
-		else:
-			_stop_idle_wiggle(actor_id)
+	animation_controller.update_active_idle_motion(active_id)
 
 func _start_idle_wiggle(actor_id: String) -> void:
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	if actor_idle_tweens.has(actor_id):
-		var existing = actor_idle_tweens[actor_id]
-		if existing:
-			existing.kill()
-	var base_pos = actor_base_positions.get(actor_id, Vector2.ZERO)
-	sprite.position = base_pos
-	var tween = create_tween()
-	tween.set_loops()
-	tween.tween_property(sprite, "position:x", base_pos.x + 3, 0.24).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(sprite, "position:x", base_pos.x - 3, 0.24).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(sprite, "position:x", base_pos.x, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	actor_idle_tweens[actor_id] = tween
+	animation_controller.start_idle_wiggle(actor_id)
 
 func _stop_idle_wiggle(actor_id: String) -> void:
-	if actor_idle_tweens.has(actor_id):
-		var tween = actor_idle_tweens[actor_id]
-		if tween:
-			tween.kill()
-		actor_idle_tweens.erase(actor_id)
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	var base_pos = actor_base_positions.get(actor_id, sprite.position)
-	sprite.position = base_pos
+	animation_controller.stop_idle_wiggle(actor_id)
 
 func _play_action_whip(actor_id: String) -> void:
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	_stop_idle_wiggle(actor_id)
-	if actor_action_tweens.has(actor_id):
-		var existing = actor_action_tweens[actor_id]
-		if existing:
-			existing.kill()
-	var base_pos = actor_base_positions.get(actor_id, sprite.position)
-	var dir = 1.0
-	if _is_party_member(actor_id):
-		dir = -1.0
-	var tween = create_tween()
-	tween.tween_property(sprite, "position:x", base_pos.x + (dir * 10.0), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(sprite, "position:x", base_pos.x, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	actor_action_tweens[actor_id] = tween
-	_resume_idle_if_active(actor_id, 0.45)
+	animation_controller.play_action_whip(actor_id, _is_party_member(actor_id))
 
 func _play_hit_shake(actor_id: String) -> void:
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	actor_last_hit_at[actor_id] = Time.get_ticks_msec()
-	_stop_idle_wiggle(actor_id)
-	if actor_shake_tweens.has(actor_id):
-		var existing = actor_shake_tweens[actor_id]
-		if existing:
-			existing.kill()
-	var base_pos = actor_base_positions.get(actor_id, sprite.position)
-	var tween = create_tween()
-	tween.tween_property(sprite, "position:x", base_pos.x + 5, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x - 5, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x + 3, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x, 0.05)
-	actor_shake_tweens[actor_id] = tween
-	if battle_manager.battle_state.get("active_character_id", "") == actor_id:
-		_resume_idle_if_active(actor_id, 0.35)
-	else:
-		_resume_idle_if_active(actor_id, 0.6)
-
-func _resume_idle_if_active(actor_id: String, delay: float) -> void:
-	var timer = get_tree().create_timer(delay)
-	timer.timeout.connect(func ():
-		if battle_manager.battle_state.get("active_character_id", "") == actor_id:
-			_start_idle_wiggle(actor_id)
-	)
-
-func _delay_idle_after_recent_hit(actor_id: String) -> void:
-	if actor_shake_tweens.has(actor_id):
-		var timer = get_tree().create_timer(0.15)
-		timer.timeout.connect(func ():
-			if battle_manager.battle_state.get("active_character_id", "") == actor_id:
-				_start_idle_wiggle(actor_id)
-		)
-
-func _should_delay_idle_after_hit(actor_id: String) -> bool:
-	if not actor_last_hit_at.has(actor_id):
-		return false
-	return Time.get_ticks_msec() - int(actor_last_hit_at[actor_id]) < 500
+	animation_controller.play_hit_shake(actor_id)
 
 func _start_global_idle_all() -> void:
-	for actor_id in actor_nodes.keys():
-		_start_global_idle(actor_id)
-
-func _start_global_idle(actor_id: String) -> void:
-	var actor = actor_nodes.get(actor_id, null)
-	if actor == null:
-		return
-	if actor_global_idle_tokens.has(actor_id):
-		actor_global_idle_tokens[actor_id] += 1
-	else:
-		actor_global_idle_tokens[actor_id] = 1
-	var token = actor_global_idle_tokens[actor_id]
-	var base_pos = actor_root_positions.get(actor_id, actor.position)
-	actor.position = base_pos
-	var phase_seed = abs(hash(actor_id)) % 100
-	var delay = float(phase_seed) / 100.0 * 1.2
-	var timer = get_tree().create_timer(delay)
-	timer.timeout.connect(func ():
-		_global_idle_tick(actor_id, base_pos, token, true)
-	)
-
-func _global_idle_tick(actor_id: String, base_pos: Vector2, token: int, to_right: bool) -> void:
-	if actor_global_idle_tokens.get(actor_id, 0) != token:
-		return
-	var actor = actor_nodes.get(actor_id, null)
-	if actor == null:
-		return
-	actor.position = base_pos + Vector2(1 if to_right else -1, 0)
-	var timer = get_tree().create_timer(1.2)
-	timer.timeout.connect(func ():
-		_global_idle_tick(actor_id, base_pos, token, not to_right)
-	)
+	animation_controller.start_global_idle_all()
 
 func _apply_active_name_style(label: Label, is_active: bool) -> void:
 	if is_active:
@@ -1480,75 +1325,13 @@ func _on_status_removed(actor_id: String, status_id: String) -> void:
 	_update_status_effects_text()
 
 func _start_poison_tint(actor_id: String) -> void:
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	if not (sprite is CanvasItem):
-		return
-	if actor_poison_tweens.has(actor_id):
-		var existing = actor_poison_tweens[actor_id]
-		if existing:
-			existing.kill()
-	var visual = sprite as CanvasItem
-	var base = actor_base_self_modulates.get(actor_id, Color(1, 1, 1))
-	var tween = create_tween()
-	tween.set_loops()
-	tween.tween_property(visual, "self_modulate", Color(0.7, 1.0, 0.7), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(visual, "self_modulate", base, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	actor_poison_tweens[actor_id] = tween
+	animation_controller.start_poison_tint(actor_id)
 
 func _stop_poison_tint(actor_id: String) -> void:
-	if actor_poison_tweens.has(actor_id):
-		var tween = actor_poison_tweens[actor_id]
-		if tween:
-			tween.kill()
-		actor_poison_tweens.erase(actor_id)
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite is CanvasItem:
-		var base = actor_base_self_modulates.get(actor_id, Color(1, 1, 1))
-		(sprite as CanvasItem).self_modulate = base
+	animation_controller.stop_poison_tint(actor_id)
 
 func _flash_damage_tint(actor_id: String, _amount: int) -> void:
-	var sprite = actor_sprites.get(actor_id, null)
-	if sprite == null:
-		return
-	if not (sprite is CanvasItem):
-		return
-	var visual = sprite as CanvasItem
-	if actor_flash_tweens.has(actor_id):
-		var existing = actor_flash_tweens[actor_id]
-		if existing:
-			existing.kill()
-	var original = actor_base_modulates.get(actor_id, visual.modulate)
-	visual.modulate = Color(1.0, 0.25, 0.25)
-	var tween = create_tween()
-	tween.tween_interval(0.06)
-	tween.tween_property(visual, "modulate", original, 0.14)
-	actor_flash_tweens[actor_id] = tween
-	# Check if character is now KO'd and clean up tweens
-	var actor = battle_manager.get_actor_by_id(actor_id)
-	if actor != null and actor.is_ko():
-		_cleanup_actor_tweens(actor_id)
-
+	animation_controller.flash_damage_tint(actor_id)
 
 func _cleanup_actor_tweens(actor_id: String) -> void:
-	# Stop and clean up all tweens for a KO'd actor to prevent memory leaks
-	_stop_idle_wiggle(actor_id)
-	_stop_poison_tint(actor_id)
-	if actor_action_tweens.has(actor_id):
-		var tween = actor_action_tweens[actor_id]
-		if tween:
-			tween.kill()
-		actor_action_tweens.erase(actor_id)
-	if actor_shake_tweens.has(actor_id):
-		var tween = actor_shake_tweens[actor_id]
-		if tween:
-			tween.kill()
-		actor_shake_tweens.erase(actor_id)
-	if actor_flash_tweens.has(actor_id):
-		var tween = actor_flash_tweens[actor_id]
-		if tween:
-			tween.kill()
-		actor_flash_tweens.erase(actor_id)
-	if actor_global_idle_tokens.has(actor_id):
-		actor_global_idle_tokens.erase(actor_id)
+	animation_controller.cleanup_actor_tweens(actor_id)
