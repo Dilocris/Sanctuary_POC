@@ -30,6 +30,9 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.BOS_TENDRIL_LASH: "Tendril Lash",
 	ActionIds.BOS_BATTLE_ROAR: "Battle Roar",
 	ActionIds.BOS_COLLECTORS_GRASP: "Collector's Grasp",
+	ActionIds.BOS_DARK_REGEN: "Dark Regeneration",
+	ActionIds.BOS_SYMBIOTIC_RAGE: "Symbiotic Rage",
+	ActionIds.BOS_VENOM_STRIKE: "Venom Strike",
 	ActionIds.BASIC_ATTACK: "Attack",
 	ActionIds.KAI_FLURRY: "Flurry of Blows",
 	ActionIds.KAI_STUN_STRIKE: "Stunning Strike",
@@ -63,7 +66,9 @@ func setup_state(party: Array, enemies: Array) -> void:
 		"ninos_counterspell_used": false,
 		"metamagic": {},
 		"marcus_pull_target": "",
-		"marcus_turn_index": 0
+		"marcus_turn_index": 0,
+		"boss_cooldowns": {},
+		"boss_phase_announced": 1
 	}
 
 
@@ -136,11 +141,18 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 		return ActionResult.new(false, "target_ko").to_dict()
 
 	var damage = DamageCalculator.calculate_physical_damage(attacker, target, multiplier)
+	var bonus_dmg = 0
+	if attacker.has_status(StatusEffectIds.INSPIRE_ATTACK):
+		bonus_dmg = randi_range(1, 8)
+		attacker.remove_status(StatusEffectIds.INSPIRE_ATTACK)
+		add_message(attacker.display_name + " strikes with Inspiration! +" + str(bonus_dmg) + " dmg.")
+		damage += bonus_dmg
 	_apply_damage_with_limit(attacker, target, damage)
 	add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
 	_try_riposte(attacker, target)
 	return ActionResult.new(true, "", {
 		"damage": damage,
+		"bonus": bonus_dmg,
 		"attacker_id": attacker_id,
 		"target_id": target_id
 	}).to_dict()
@@ -339,6 +351,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			var target_vm = get_actor_by_id(targets[0])
 			var damage_vm = 15 + (int(actor.stats.mag * 0.3) if actor else 0)
+			damage_vm = _apply_bless_bonus(actor, damage_vm)
 			if target_vm != null:
 				_apply_damage_with_limit(actor, target_vm, damage_vm)
 				target_vm.add_status(StatusEffectFactory.atk_down())
@@ -369,17 +382,10 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			# For now, just a placeholder message for Inspiration as we don't have the 'next attack' logic fully hooked yet
-			# We can simulate it by giving a temporary ATK_UP or similar if needed, or just logging it.
-			# GDD says: "Target ally's next attack deals +1d8 damage". 
-			# We will skip complex trigger logic for this pass and just show it consumed.
-			add_message(actor.display_name + " inspired " + targets[0] + " (Attack)!")
-			return ActionResult.new(true, "", {
-				"inspired": "attack",
-				"target_id": targets[0],
-				"attacker_id": actor_id
-			}).to_dict()
-
+			var target_inspire = get_actor_by_id(targets[0])
+			if target_inspire != null:
+				target_inspire.add_status(StatusEffectFactory.inspire_attack())
+				add_message(actor.display_name + " inspires " + target_inspire.display_name + " (Attack)!")
 			return ActionResult.new(true, "", {
 				"inspired": "attack",
 				"target_id": targets[0],
@@ -393,6 +399,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var target_fb = get_actor_by_id(targets[0])
 			var meta = consume_metamagic(actor_id)
 			var dmg_fb = randi_range(1, 10) + (int(actor.stats.mag * 0.5) if actor else 0)
+			dmg_fb = _apply_bless_bonus(actor, dmg_fb)
 			if target_fb != null:
 				_apply_damage_with_limit(actor, target_fb, dmg_fb)
 				add_message(actor.display_name + " casts Fire Bolt at " + target_fb.display_name + "! " + str(dmg_fb) + " Fire dmg")
@@ -422,6 +429,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					var dmg_val = randi_range(8, 64) # 8d6 roughly
 					# For poc, simple formula:
 					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
+					dmg_val = _apply_bless_bonus(actor, dmg_val)
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
 					total_dmg_fireball += dmg_val
@@ -499,6 +507,47 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if pulled != null:
 				add_message(pulled.display_name + " is dragged toward Marcus!")
 			return ActionResult.new(true, "", {"pull": targets[0]}).to_dict()
+		ActionIds.BOS_DARK_REGEN:
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, []))
+				var heal = randi_range(80, 130)
+				actor.heal(heal)
+				add_message(actor.display_name + " regenerates " + str(heal) + " HP!")
+				return ActionResult.new(true, "", {"healed": heal, "attacker_id": actor_id, "target_id": actor_id}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.BOS_SYMBIOTIC_RAGE:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, targets))
+			var rage_hits = _apply_attack_hits(actor_id, targets[0], 2, 1.2)
+			var total_rage = 0
+			for hit in rage_hits:
+				total_rage += int(hit)
+			return ActionResult.new(true, "", {
+				"damage": total_rage,
+				"damage_instances": rage_hits,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.BOS_VENOM_STRIKE:
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, targets))
+			var total = 0
+			var hit_targets: Array = []
+			for t_id in targets:
+				var t = get_actor_by_id(t_id)
+				if t != null:
+					var dmg = randi_range(110, 130)
+					_apply_damage_with_limit(actor, t, dmg)
+					t.add_status(StatusEffectFactory.poison())
+					hit_targets.append(t_id)
+					total += dmg
+			return ActionResult.new(true, "", {
+				"damage_total": total,
+				"targets_hit": hit_targets.size(),
+				"attacker_id": actor_id
+			}).to_dict()
 
 		_:
 			return ActionResult.new(false, "unknown_action").to_dict()
@@ -589,6 +638,27 @@ func _apply_damage_with_limit(attacker: Character, target: Character, amount: in
 		return
 	target.apply_damage(amount)
 	_update_limit_gauges(attacker, target, amount)
+	_check_boss_phase_transition(target)
+
+func _check_boss_phase_transition(target: Character) -> void:
+	if target == null:
+		return
+	if target.id != "marcus_gelt":
+		return
+	var hp_percent = float(target.hp_current) / float(target.stats.get("hp_max", 1)) * 100.0
+	if target.phase == 1 and hp_percent <= 60.0:
+		target.phase = 2
+		add_message("The symbiote armor awakens fully!")
+	if target.phase == 2 and hp_percent <= 30.0:
+		target.phase = 3
+		add_message("The Collector's desperation takes hold!")
+
+func _apply_bless_bonus(attacker: Character, base_damage: int) -> int:
+	if attacker == null:
+		return base_damage
+	if attacker.has_status(StatusEffectIds.BLESS):
+		return base_damage + randi_range(1, 4)
+	return base_damage
 
 
 func _try_riposte(attacker: Character, defender: Character) -> void:
@@ -769,12 +839,17 @@ func _tick_status(status: Variant) -> void:
 	if status is StatusEffect:
 		status.tick()
 	elif status is Dictionary:
-		status["duration"] = status.get("duration", 0) - 1
+		var duration = status.get("duration", 0)
+		if duration >= 0:
+			status["duration"] = duration - 1
 
 
 func _is_status_expired(status: Variant) -> bool:
 	if status is StatusEffect:
 		return status.is_expired()
 	if status is Dictionary:
-		return status.get("duration", 0) <= 0
+		var duration = status.get("duration", 0)
+		if duration < 0:
+			return false
+		return duration <= 0
 	return false

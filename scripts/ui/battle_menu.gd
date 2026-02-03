@@ -17,6 +17,7 @@ var current_selection_index: int = 0
 var action_list_container: VBoxContainer
 @onready var action_list_node = $Panel/ActionList
 @onready var description_label = $DescriptionPanel/Label
+@onready var actor_label = $Panel/ActorName
 
 var menu_items: Array = []
 var disabled_actions: Dictionary = {}
@@ -32,6 +33,8 @@ func setup(actor: Character) -> void:
 	current_state = MenuState.MAIN
 	current_selection_index = 0
 	visible = true
+	if actor_label:
+		actor_label.text = actor.display_name.to_upper()
 	_build_main_menu()
 	_update_selection()
 	_block_input(150)
@@ -56,7 +59,7 @@ func _build_main_menu() -> void:
 	menu_items.clear()
 	# Common Attack (Catraca uses Fire Bolt as her basic)
 	if active_actor.id == "catraca":
-		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Cantrip: Fire damage."})
+		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Single target fire damage."})
 	else:
 		menu_items.append({"label": "Attack", "id": "ATTACK", "desc": "Basic physical attack."})
 	
@@ -74,9 +77,9 @@ func _build_main_menu() -> void:
 	
 	# Common Defend/Guard
 	if active_actor.id == "ludwig":
-		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle defensive stance."})
+		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle stance: +DEF, half dmg, enables Riposte; no Attacks/Maneuvers."})
 	else:
-		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn and reduce damage."})
+		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn."})
 		
 	# Common Item
 	menu_items.append({"label": "Item", "id": "ITEM_SUB", "desc": "Use consumables."})
@@ -90,23 +93,23 @@ func _build_submenu(category: String) -> void:
 			if category == "SKILL_SUB":
 				menu_items.append({"label": "Flurry of Blows", "id": ActionIds.KAI_FLURRY, "desc": "2 Ki: Multi-hit attack."})
 				menu_items.append({"label": "Stunning Strike", "id": ActionIds.KAI_STUN_STRIKE, "desc": "1 Ki: Stun target."})
-				menu_items.append({"label": "Fire Imbue", "id": ActionIds.KAI_FIRE_IMBUE, "desc": "0 Ki: Add Fire dmg to attacks."})
+				menu_items.append({"label": "Fire Imbue", "id": ActionIds.KAI_FIRE_IMBUE, "desc": "Toggle: Add fire dmg; drains Ki each turn."})
 		"ludwig":
 			if category == "SKILL_SUB":
 				menu_items.append({"label": "Lunging Attack", "id": ActionIds.LUD_LUNGING, "desc": "1 Die: Reach attack + bonus dmg."})
 				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Die: Bonus dmg (ignores evasion)."})
 				menu_items.append({"label": "Shield Bash", "id": ActionIds.LUD_SHIELD_BASH, "desc": "1 Die: Chance to stun."})
-				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Die: Heal ally."})
+				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Die: Heal an ally."})
 		"ninos":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp: Buff ally attack."})
-				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP: Dmg + Atk Down."})
-				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP: Heal ally."})
-				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP: Buff party."})
+				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp: Ally's next attack +1d8 dmg."})
+				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP: Damage + ATK Down."})
+				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP: Heal an ally."})
+				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP: Party +1d4 dmg for 2 turns."})
 		"catraca":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP: AoE Fire damage."})
-				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP: Buff defense."})
+				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP: Fire damage to all enemies."})
+				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP: DEF up for 3 turns."})
 			elif category == "META_SUB":
 				menu_items.append({"label": "Quicken Spell", "id": ActionIds.CAT_METAMAGIC_QUICKEN, "desc": "2 SP: Extra action after spell."})
 				menu_items.append({"label": "Twin Spell", "id": ActionIds.CAT_METAMAGIC_TWIN, "desc": "1 SP: Single spell hits 2 targets."})

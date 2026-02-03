@@ -7,6 +7,7 @@ signal resource_changed(resource_type: String, current: int, max: int)
 signal status_added(status_id: String)
 signal status_removed(status_id: String)
 signal ko_state_changed(is_ko: bool)
+signal damage_taken(amount: int)
 
 var id: String = ""
 var display_name: String = ""
@@ -53,6 +54,7 @@ func apply_damage(amount: int) -> void:
 	var was_ko = is_ko()
 	hp_current = max(0, hp_current - amount)
 	emit_signal("hp_changed", hp_current, stats["hp_max"])
+	emit_signal("damage_taken", amount)
 	if was_ko != is_ko():
 		emit_signal("ko_state_changed", is_ko())
 

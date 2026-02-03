@@ -17,6 +17,8 @@ var boss_hp_fill_style: StyleBoxFlat
 var battle_log_panel: RichTextLabel
 var demo_running: bool = false
 var pending_effect_messages: Array = []
+var pending_damage_messages: Array = []
+var pending_status_messages: Array = []
 var last_logged_turn_id: String = ""
 var actor_sprites: Dictionary = {}
 var actor_name_labels: Dictionary = {}
@@ -25,6 +27,11 @@ var actor_idle_tweens: Dictionary = {}
 var actor_base_positions: Dictionary = {}
 var actor_action_tweens: Dictionary = {}
 var actor_shake_tweens: Dictionary = {}
+var actor_flash_tweens: Dictionary = {}
+var actor_base_modulates: Dictionary = {}
+var actor_last_hit_at: Dictionary = {}
+var actor_poison_tweens: Dictionary = {}
+var actor_base_self_modulates: Dictionary = {}
 var actor_nodes: Dictionary = {}
 var actor_root_positions: Dictionary = {}
 var actor_global_idle_tweens: Dictionary = {}
@@ -158,6 +165,15 @@ func _ready() -> void:
 func _make_character(data: Dictionary) -> Character:
 	var character = Character.new()
 	character.setup(data)
+	character.status_added.connect(func (status_id):
+		_on_status_added(data.get("id", ""), status_id)
+	)
+	character.status_removed.connect(func (status_id):
+		_on_status_removed(data.get("id", ""), status_id)
+	)
+	character.damage_taken.connect(func (amount):
+		_flash_damage_tint(data.get("id", ""), amount)
+	)
 	if data.has("position"):
 		character.position = data["position"]
 	actor_nodes[data.get("id", "")] = character
@@ -182,11 +198,13 @@ func _make_character(data: Dictionary) -> Character:
 		sprite.centered = false
 		sprite.position = Vector2(0, 0)
 		sprite.scale = Vector2(ACTOR_SCALE, ACTOR_SCALE)
+		actor_base_modulates[data.get("id", "")] = sprite.modulate
 		if sprite.texture:
 			sprite_size = sprite.texture.get_size() * ACTOR_SCALE
 		character.add_child(sprite)
 		actor_sprites[data.get("id", "")] = sprite
 		actor_base_positions[data.get("id", "")] = sprite.position
+		actor_base_self_modulates[data.get("id", "")] = sprite.self_modulate
 	else:
 		var color = data.get("color", Color.WHITE)
 		var visual = ColorRect.new()
@@ -197,7 +215,9 @@ func _make_character(data: Dictionary) -> Character:
 		character.add_child(visual)
 		sprite_size = visual.size
 		actor_sprites[data.get("id", "")] = visual
+		actor_base_modulates[data.get("id", "")] = visual.modulate
 		actor_base_positions[data.get("id", "")] = visual.position
+		actor_base_self_modulates[data.get("id", "")] = visual.self_modulate
 	
 	# Add Name Label above head
 	var name_lbl = Label.new()
@@ -216,6 +236,15 @@ func _make_character(data: Dictionary) -> Character:
 func _make_boss(data: Dictionary) -> Boss:
 	var boss = Boss.new()
 	boss.setup(data)
+	boss.status_added.connect(func (status_id):
+		_on_status_added(data.get("id", ""), status_id)
+	)
+	boss.status_removed.connect(func (status_id):
+		_on_status_removed(data.get("id", ""), status_id)
+	)
+	boss.damage_taken.connect(func (amount):
+		_flash_damage_tint(data.get("id", ""), amount)
+	)
 	if data.has("position"):
 		boss.position = data["position"]
 	actor_nodes[data.get("id", "")] = boss
@@ -231,9 +260,11 @@ func _make_boss(data: Dictionary) -> Boss:
 		sprite.centered = false
 		sprite.position = Vector2(0, 0)
 		sprite.scale = Vector2(BOSS_SCALE, BOSS_SCALE)
+		actor_base_modulates[data.get("id", "")] = sprite.modulate
 		boss.add_child(sprite)
 		actor_sprites[data.get("id", "")] = sprite
 		actor_base_positions[data.get("id", "")] = sprite.position
+		actor_base_self_modulates[data.get("id", "")] = sprite.self_modulate
 		
 		var name_lbl = Label.new()
 		name_lbl.text = data.get("display_name", "")
@@ -288,7 +319,9 @@ func _make_boss(data: Dictionary) -> Boss:
 		visual.color = color
 		boss.add_child(visual)
 		actor_sprites[data.get("id", "")] = visual
+		actor_base_modulates[data.get("id", "")] = visual.modulate
 		actor_base_positions[data.get("id", "")] = visual.position
+		actor_base_self_modulates[data.get("id", "")] = visual.self_modulate
 		var name_lbl = Label.new()
 		name_lbl.text = data.get("display_name", "")
 		name_lbl.position = Vector2(0, visual.size.y + 6)
@@ -423,13 +456,13 @@ func _on_action_executed(result: Dictionary) -> void:
 			var total_instances = 0
 			for hit in instances:
 				total_instances += int(hit)
-			pending_effect_messages.append("Damage: " + str(total_instances))
+			pending_damage_messages.append("Damage: " + str(total_instances))
 		elif payload.has("damage"):
 			var dmg = payload["damage"]
 			if target:
 				_spawn_damage_numbers(target_id, [dmg])
 				_play_hit_shake(target_id)
-			pending_effect_messages.append("Damage: " + str(dmg))
+			pending_damage_messages.append("Damage: " + str(dmg))
 				
 		# Handle Healing
 		if payload.has("healed"):
@@ -443,19 +476,19 @@ func _on_action_executed(result: Dictionary) -> void:
 			if target: # Self buff usually
 				_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
 			_create_status_indicator(payload.get("attacker_id", payload.get("target_id", "")))
-			pending_effect_messages.append("Buff: " + str(payload["buff"]))
+			pending_status_messages.append("Buff: " + str(payload["buff"]))
 		elif payload.has("debuff"):
 			if target:
 				_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
 				_play_hit_shake(target_id)
 			_create_status_indicator(payload.get("target_id", ""))
-			pending_effect_messages.append("Debuff: " + str(payload["debuff"]))
+			pending_status_messages.append("Debuff: " + str(payload["debuff"]))
 		elif payload.has("stun_applied") and payload["stun_applied"]:
 			if target:
 				_create_floating_text(target.position, "STUNNED", Color.YELLOW)
 				_play_hit_shake(target_id)
 			_create_status_indicator(payload.get("target_id", ""))
-			pending_effect_messages.append("Status: STUN")
+			pending_status_messages.append("Status: STUN")
 				
 	# Pass to log logic...
 	pass
@@ -587,8 +620,10 @@ func _on_menu_action_selected(action_id: String) -> void:
 	if target_mode == "SELF":
 		_enqueue_and_execute(action_id, [active_player_id])
 	elif target_mode == "ALL":
-		target_cursor.start_selection(target_pool, "ALL")
-		current_pending_action_id = action_id
+		var target_ids = []
+		for t in target_pool:
+			target_ids.append(t.id)
+		_enqueue_and_execute(action_id, target_ids)
 	elif target_mode == "DOUBLE":
 		target_cursor.start_selection(target_pool, "DOUBLE")
 		current_pending_action_id = action_id
@@ -901,14 +936,14 @@ func _update_status_label(lines: Array) -> void:
 			_apply_active_name_style(name_lbl, actor.id == active_id)
 			
 			var hp_container = Control.new()
-			hp_container.custom_minimum_size = Vector2(150, 18)
+			hp_container.custom_minimum_size = Vector2(140, 18)
 			hp_container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			var hp_bar = ProgressBar.new()
 			hp_bar.min_value = 0
 			hp_bar.max_value = actor.stats["hp_max"]
 			hp_bar.value = actor.hp_current
 			hp_bar.show_percentage = false
-			hp_bar.size = Vector2(150, 18)
+			hp_bar.size = Vector2(140, 18)
 			var hp_bg = StyleBoxFlat.new()
 			hp_bg.bg_color = Color(0.1, 0.1, 0.1, 0.9)
 			hp_bg.corner_radius_top_left = 8
@@ -946,7 +981,7 @@ func _update_status_label(lines: Array) -> void:
 				mp_lbl.text = "MP:%d/%d" % [actor.mp_current, actor.stats["mp_max"]]
 			else:
 				mp_lbl.text = ""
-			mp_lbl.custom_minimum_size = Vector2(190, 0)
+			mp_lbl.custom_minimum_size = Vector2(150, 0)
 			
 			# Append unique resources (short labels)
 			if actor.resources.has("ki"):
@@ -963,7 +998,7 @@ func _update_status_label(lines: Array) -> void:
 			lb_bar.min_value = 0
 			lb_bar.max_value = 100
 			lb_bar.value = actor.limit_gauge
-			lb_bar.custom_minimum_size = Vector2(110, 12)
+			lb_bar.custom_minimum_size = Vector2(90, 12)
 			lb_bar.show_percentage = false
 			var lb_bg = StyleBoxFlat.new()
 			lb_bg.bg_color = Color(0.12, 0.12, 0.12, 0.9)
@@ -984,6 +1019,7 @@ func _update_status_label(lines: Array) -> void:
 			lb_bar.add_theme_stylebox_override("fg", lb_fill)
 			var lb_text = Label.new()
 			lb_text.text = "%d%%" % actor.limit_gauge
+			lb_text.add_theme_font_size_override("font_size", 11)
 			lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			lb_text.anchor_right = 1.0
@@ -1025,11 +1061,17 @@ func _update_battle_log() -> void:
 		return
 	var lines = battle_manager.battle_state.get("message_log", [])
 	var start = max(0, lines.size() - 6)
-	var effect_lines = []
-	if pending_effect_messages.size() > 0:
-		effect_lines = pending_effect_messages.duplicate()
-		pending_effect_messages.clear()
-	var combined = lines.slice(start, lines.size()) + effect_lines
+	var combined = lines.slice(start, lines.size())
+	if pending_damage_messages.size() > 0:
+		combined.append("Damage:")
+		for msg in pending_damage_messages:
+			combined.append("  " + msg)
+		pending_damage_messages.clear()
+	if pending_status_messages.size() > 0:
+		combined.append("Status:")
+		for msg in pending_status_messages:
+			combined.append("  " + msg)
+		pending_status_messages.clear()
 	var turn_header = _get_turn_header()
 	if not turn_header.is_empty():
 		combined.append(turn_header)
@@ -1121,7 +1163,11 @@ func _create_damage_text(pos: Vector2, text: String) -> void:
 func _update_active_idle_motion(active_id: String) -> void:
 	for actor_id in actor_sprites.keys():
 		if actor_id == active_id:
-			_start_idle_wiggle(actor_id)
+			if _should_delay_idle_after_hit(actor_id):
+				_stop_idle_wiggle(actor_id)
+				_delay_idle_after_recent_hit(actor_id)
+			else:
+				_start_idle_wiggle(actor_id)
 		else:
 			_stop_idle_wiggle(actor_id)
 
@@ -1177,6 +1223,7 @@ func _play_hit_shake(actor_id: String) -> void:
 	var sprite = actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return
+	actor_last_hit_at[actor_id] = Time.get_ticks_msec()
 	_stop_idle_wiggle(actor_id)
 	if actor_shake_tweens.has(actor_id):
 		var existing = actor_shake_tweens[actor_id]
@@ -1189,7 +1236,10 @@ func _play_hit_shake(actor_id: String) -> void:
 	tween.tween_property(sprite, "position:x", base_pos.x + 3, 0.04)
 	tween.tween_property(sprite, "position:x", base_pos.x, 0.05)
 	actor_shake_tweens[actor_id] = tween
-	_resume_idle_if_active(actor_id, 0.6)
+	if battle_manager.battle_state.get("active_character_id", "") == actor_id:
+		_resume_idle_if_active(actor_id, 0.35)
+	else:
+		_resume_idle_if_active(actor_id, 0.6)
 
 func _resume_idle_if_active(actor_id: String, delay: float) -> void:
 	var timer = get_tree().create_timer(delay)
@@ -1197,6 +1247,19 @@ func _resume_idle_if_active(actor_id: String, delay: float) -> void:
 		if battle_manager.battle_state.get("active_character_id", "") == actor_id:
 			_start_idle_wiggle(actor_id)
 	)
+
+func _delay_idle_after_recent_hit(actor_id: String) -> void:
+	if actor_shake_tweens.has(actor_id):
+		var timer = get_tree().create_timer(0.15)
+		timer.timeout.connect(func ():
+			if battle_manager.battle_state.get("active_character_id", "") == actor_id:
+				_start_idle_wiggle(actor_id)
+		)
+
+func _should_delay_idle_after_hit(actor_id: String) -> bool:
+	if not actor_last_hit_at.has(actor_id):
+		return false
+	return Time.get_ticks_msec() - int(actor_last_hit_at[actor_id]) < 500
 
 func _start_global_idle_all() -> void:
 	for actor_id in actor_nodes.keys():
@@ -1264,3 +1327,60 @@ func _update_boss_hp_color(current_hp: int, max_hp: int) -> void:
 		boss_hp_fill_style.bg_color = Color(0.95, 0.65, 0.15)
 	else:
 		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
+
+func _on_status_added(actor_id: String, status_id: String) -> void:
+	if status_id == StatusEffectIds.POISON:
+		_start_poison_tint(actor_id)
+	_update_status_effects_text()
+
+func _on_status_removed(actor_id: String, status_id: String) -> void:
+	if status_id == StatusEffectIds.POISON:
+		_stop_poison_tint(actor_id)
+	_update_status_effects_text()
+
+func _start_poison_tint(actor_id: String) -> void:
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	if not (sprite is CanvasItem):
+		return
+	if actor_poison_tweens.has(actor_id):
+		var existing = actor_poison_tweens[actor_id]
+		if existing:
+			existing.kill()
+	var visual = sprite as CanvasItem
+	var base = actor_base_self_modulates.get(actor_id, Color(1, 1, 1))
+	var tween = create_tween()
+	tween.set_loops()
+	tween.tween_property(visual, "self_modulate", Color(0.7, 1.0, 0.7), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(visual, "self_modulate", base, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	actor_poison_tweens[actor_id] = tween
+
+func _stop_poison_tint(actor_id: String) -> void:
+	if actor_poison_tweens.has(actor_id):
+		var tween = actor_poison_tweens[actor_id]
+		if tween:
+			tween.kill()
+		actor_poison_tweens.erase(actor_id)
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite is CanvasItem:
+		var base = actor_base_self_modulates.get(actor_id, Color(1, 1, 1))
+		(sprite as CanvasItem).self_modulate = base
+
+func _flash_damage_tint(actor_id: String, _amount: int) -> void:
+	var sprite = actor_sprites.get(actor_id, null)
+	if sprite == null:
+		return
+	if not (sprite is CanvasItem):
+		return
+	var visual = sprite as CanvasItem
+	if actor_flash_tweens.has(actor_id):
+		var existing = actor_flash_tweens[actor_id]
+		if existing:
+			existing.kill()
+	var original = actor_base_modulates.get(actor_id, visual.modulate)
+	visual.modulate = Color(1.0, 0.25, 0.25)
+	var tween = create_tween()
+	tween.tween_interval(0.06)
+	tween.tween_property(visual, "modulate", original, 0.14)
+	actor_flash_tweens[actor_id] = tween

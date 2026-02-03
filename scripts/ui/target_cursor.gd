@@ -9,6 +9,9 @@ var is_active: bool = false
 var selector_mode: String = "SINGLE" # SINGLE, ALL, SELF
 var mode_label: Label
 var selected_ids: Array = []
+var highlighted_targets: Array = []
+var original_materials: Dictionary = {}
+var outline_shader: ShaderMaterial
 
 func _ready() -> void:
 	visible = false
@@ -17,6 +20,36 @@ func _ready() -> void:
 	mode_label.visible = false
 	mode_label.position = Vector2(-10, -90)
 	add_child(mode_label)
+	_outline_setup()
+
+func _outline_setup() -> void:
+	var shader = Shader.new()
+	shader.code = """
+shader_type canvas_item;
+uniform vec4 outline_color : source_color = vec4(0.9, 0.9, 0.5, 0.9);
+uniform float outline_size = 1.0;
+void fragment(){
+	vec4 col = texture(TEXTURE, UV);
+	if(col.a > 0.0){
+		COLOR = col;
+	} else {
+		float a = 0.0;
+		for(int x=-1;x<=1;x++){
+			for(int y=-1;y<=1;y++){
+				vec2 offs = UV + vec2(float(x), float(y)) * outline_size * TEXTURE_PIXEL_SIZE;
+				a = max(a, texture(TEXTURE, offs).a);
+			}
+		}
+		if(a > 0.0){
+			COLOR = outline_color;
+		}else{
+			discard;
+		}
+	}
+}
+"""
+	outline_shader = ShaderMaterial.new()
+	outline_shader.shader = shader
 
 func start_selection(targets: Array, mode: String = "SINGLE") -> void:
 	valid_targets = targets
@@ -42,6 +75,7 @@ func deactivate() -> void:
 	is_active = false
 	visible = false
 	mode_label.visible = false
+	_clear_highlights()
 
 func _input(event: InputEvent) -> void:
 	if not is_active:
@@ -75,6 +109,7 @@ func _update_position() -> void:
 				count += 1
 		if count > 0:
 			global_position = (sum / float(count)) + Vector2(0, -50)
+			_set_highlight(null)
 			return
 
 	var target = valid_targets[current_index]
@@ -89,6 +124,7 @@ func _update_position() -> void:
 			global_position = visual.global_position + Vector2(0, -20)
 		else:
 			global_position = target.global_position + Vector2(0, -50) # Point above head
+		_set_highlight(target)
 	else:
 		# Fallback if characters aren't spatial, just print for now or use mock positions
 		# Since the harness is pure logic Node based, we might not have positions!
@@ -99,6 +135,7 @@ func _confirm_selection() -> void:
 	if selector_mode == "ALL":
 		is_active = false
 		visible = false
+		_clear_highlights()
 		var ids = []
 		for t in valid_targets:
 			ids.append(t.id)
@@ -109,18 +146,57 @@ func _confirm_selection() -> void:
 		if selected_ids.has(current_id):
 			return
 		selected_ids.append(current_id)
+		var selected_target = valid_targets[current_index]
+		_set_highlight(selected_target, true)
 		if selected_ids.size() >= 2:
 			is_active = false
 			visible = false
+			_clear_highlights()
 			emit_signal("target_selected", selected_ids)
 		return
 	# Single Target
 	is_active = false
 	visible = false
+	_clear_highlights()
 	emit_signal("target_selected", [valid_targets[current_index].id])
 
 func _cancel_selection() -> void:
 	is_active = false
 	visible = false
 	selected_ids.clear()
+	_clear_highlights()
 	emit_signal("selection_canceled")
+
+func _set_highlight(target: Node, persist: bool = false) -> void:
+	if target == null:
+		_clear_highlights()
+		return
+	if not persist:
+		_clear_highlights()
+	_apply_outline(target, true)
+	if persist and not highlighted_targets.has(target):
+		highlighted_targets.append(target)
+
+func _clear_highlights() -> void:
+	for target in highlighted_targets:
+		_apply_outline(target, false)
+	highlighted_targets.clear()
+
+func _apply_outline(target: Node, enable: bool) -> void:
+	if target == null:
+		return
+	var visual = target.get_node_or_null("Visual")
+	if visual is Sprite2D:
+		if enable:
+			if not original_materials.has(visual):
+				original_materials[visual] = visual.material
+			visual.material = outline_shader
+		else:
+			if original_materials.has(visual):
+				visual.material = original_materials[visual]
+				original_materials.erase(visual)
+	elif visual is CanvasItem:
+		if enable:
+			visual.modulate = Color(1.0, 1.0, 0.8)
+		else:
+			visual.modulate = Color(1, 1, 1)

@@ -39,6 +39,11 @@ Date: 2026-02-03
 - Non-active idle now uses stepped 2-keyframe motion (low amplitude), active idle toned down.
 - Party HP and LB now use pill/progress bars with aligned text; LB turns blue at 100%.
 - Menu cursor uses a diamond indicator; description panel repositioned to avoid overlap.
+- Poison now applies a slow oscillating green tint on the sprite.
+- Bless now applies +1d4 to physical and magical damage for 2 turns; Mage Armor is 3-turn DEF buff.
+- Indefinite statuses no longer expire; Guard Stance/Mage Armor persist as intended.
+- Fixed duplicate boss action functions in `action_factory.gd`.
+- Fixed target cursor outline shader (no early return in fragment).
 
 ## Next high-level steps
 1) Verify input mappings and menu flow stability (ui_up/down/left/right/accept/cancel).

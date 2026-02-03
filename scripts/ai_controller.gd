@@ -5,11 +5,12 @@ func get_next_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
 	_update_phase(boss)
 	if boss.phase == 1:
 		return _phase_one_action(boss, battle_state)
+	if boss.phase == 2:
+		return _phase_two_action(boss, battle_state)
+	if boss.phase == 3:
+		return _phase_three_action(boss, battle_state)
 
-	var target_id = _select_first_alive(battle_state.get("party", []))
-	if target_id == "":
-		return ActionFactory.skip_turn(boss.id)
-	return ActionFactory.basic_attack(boss.id, target_id, 1.0)
+	return ActionFactory.skip_turn(boss.id)
 
 
 func _select_first_alive(party: Array) -> String:
@@ -44,6 +45,45 @@ func _phase_one_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
 			return ActionFactory.marcus_collectors_grasp(boss.id, grasp_target)
 
 	return ActionFactory.skip_turn(boss.id)
+
+
+func _phase_two_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
+	var party = battle_state.get("party", [])
+	var cooldowns = battle_state.flags.get("boss_cooldowns", {})
+	var dark_regen_cd = cooldowns.get("dark_regen", 0)
+	if dark_regen_cd > 0:
+		cooldowns["dark_regen"] = dark_regen_cd - 1
+		battle_state.flags["boss_cooldowns"] = cooldowns
+
+	if dark_regen_cd == 0 and battle_state.get("turn_count", 0) % 5 == 0:
+		cooldowns["dark_regen"] = 4
+		battle_state.flags["boss_cooldowns"] = cooldowns
+		return ActionFactory.marcus_dark_regen(boss.id)
+
+	if battle_state.flags.get("boss_last_action", "") != ActionIds.BOS_SYMBIOTIC_RAGE:
+		var target_id = _select_highest_threat(party)
+		battle_state.flags["boss_last_action"] = ActionIds.BOS_SYMBIOTIC_RAGE
+		return ActionFactory.marcus_symbiotic_rage(boss.id, [target_id, target_id])
+
+	battle_state.flags["boss_last_action"] = "basic"
+	var target = _select_random(party)
+	return ActionFactory.marcus_greataxe_slam(boss.id, target)
+
+
+func _phase_three_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
+	var party = battle_state.get("party", [])
+	var turn_count = battle_state.get("turn_count", 0)
+	if turn_count % 4 == 0:
+		var ids: Array = []
+		for member in party:
+			if member.hp_current > 0:
+				ids.append(member.id)
+		return ActionFactory.marcus_venom_strike(boss.id, ids)
+	if turn_count % 4 == 2:
+		var target_id = _select_highest_threat(party)
+		return ActionFactory.marcus_symbiotic_rage(boss.id, [target_id, target_id])
+	var target = _select_random(party)
+	return ActionFactory.marcus_greataxe_slam(boss.id, target)
 
 
 func _select_highest_threat(party: Array) -> String:

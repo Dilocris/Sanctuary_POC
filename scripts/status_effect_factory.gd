@@ -32,13 +32,17 @@ static func atk_up(turns: int = 4, percent: float = 0.25) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.ATK_UP, turns, int(percent * 100), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
-static func bless_buff(turns: int = 3, bonus: int = 2) -> StatusEffect:
+static func bless_buff(turns: int = 2, bonus: int = 2) -> StatusEffect:
 	# Bonus 1d4 (avg 2-3). Let's use value=2 for flat view, or handle in damage calc
-	return StatusEffect.new("bless", turns, bonus, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+	return StatusEffect.new(StatusEffectIds.BLESS, turns, bonus, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
 static func mage_armor() -> StatusEffect:
-	# Lasts until battle ends or KO. Duration -1 is common for infinite/toggle, but this isn't a toggle.
-	# We'll use -1 and logic to clear on KO. 
+	# Lasts a few turns; not a toggle.
 	# Effect: DEF * 1.5. Value could store the multiplier scaled (150).
-	return StatusEffect.new(StatusEffectIds.MAGE_ARMOR, -1, 150, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+	return StatusEffect.new(StatusEffectIds.MAGE_ARMOR, 3, 150, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
+static func inspire_attack(turns: int = 1) -> StatusEffect:
+	# Next attack deals +1d8 damage, consume on use.
+	return StatusEffect.new(StatusEffectIds.INSPIRE_ATTACK, turns, 0, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])

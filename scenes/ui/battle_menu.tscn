@@ -18,10 +18,18 @@ offset_top = 492.0
 offset_right = 220.0
 offset_bottom = 648.0
 
+[node name="ActorName" type="Label" parent="Panel"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 10.0
+offset_right = 160.0
+offset_bottom = 28.0
+text = "ACTOR"
+
 [node name="ActionList" type="VBoxContainer" parent="Panel"]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 16.0
+offset_top = 28.0
 offset_right = 184.0
 offset_bottom = 156.0
 

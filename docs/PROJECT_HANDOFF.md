@@ -76,6 +76,12 @@
 - **Boss AI Wiring**: Enemy turn now enqueues the AI-selected action directly (not forced to basic attack).
 - **Feedback Tuning**: Adjust sway/whip/shake intensity and damage number spacing if needed.
 - **Multi-hit Messages**: Only Flurry emits per-hit numbers; extend to future multi-hit actions.
+- **Boss Phase 2/3**: Added Dark Regeneration, Symbiotic Rage (double hit), Venom Strike (AoE + poison) and phase change callouts.
+- **Status Durations**: Indefinite/toggle statuses now persist (duration < 0 no longer expires).
+- **Bless**: Now applies +1d4 damage to physical and magical attacks for 2 turns; Mage Armor is 3-turn DEF buff.
+- **Poison Visual**: Added slow oscillating green tint while poisoned.
+- **Enemy Intent**: Telegraph uses player-facing action names; actions now match telegraph.
+- **Fixes**: Removed duplicate boss action factory functions; fixed target cursor outline shader.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

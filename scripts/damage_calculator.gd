@@ -25,6 +25,8 @@ static func calculate_physical_damage(attacker: Node, defender: Node, multiplier
 
 	if attacker.has_status(StatusEffectIds.FIRE_IMBUE):
 		variance += randi_range(1, 4)
+	if attacker.has_status(StatusEffectIds.BLESS):
+		variance += randi_range(1, 4)
 
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
 		variance *= 0.5
