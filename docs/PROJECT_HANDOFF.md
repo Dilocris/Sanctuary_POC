@@ -28,6 +28,11 @@
   - Active turn highlighting in party panel + name-under-sprite labels.
   - Added idle sway, action whip, and hit shake to sprites.
   - Damage numbers are larger, orange, and stagger for multi-hit.
+  - Non-active idle is now stepped (2 keyframes, low amplitude) with per-actor phase offsets.
+  - Party panel HP uses pill bars with bold current HP and smaller max HP.
+  - Limit Break uses a progress bar (grey until 100%, blue at full) with aligned % text.
+  - Enemy telegraph shows a 2s intent callout using player-facing action names.
+  - Menu cursor now uses a small diamond marker; description panel shifted to avoid overlap.
   - Catraca’s Attack now uses Fire Bolt; Fire Bolt removed from Magic submenu.
   - ATK_DOWN now scales damage using the status value (default 25%).
 

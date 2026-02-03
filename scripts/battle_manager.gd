@@ -25,6 +25,27 @@ var battle_state := {
 const TURN_ORDER_RANDOM_MIN := 0
 const TURN_ORDER_RANDOM_MAX := 5
 const MESSAGE_LOG_LIMIT := 12
+const ACTION_DISPLAY_NAMES := {
+	ActionIds.BOS_GREAXE_SLAM: "Greataxe Slam",
+	ActionIds.BOS_TENDRIL_LASH: "Tendril Lash",
+	ActionIds.BOS_BATTLE_ROAR: "Battle Roar",
+	ActionIds.BOS_COLLECTORS_GRASP: "Collector's Grasp",
+	ActionIds.BASIC_ATTACK: "Attack",
+	ActionIds.KAI_FLURRY: "Flurry of Blows",
+	ActionIds.KAI_STUN_STRIKE: "Stunning Strike",
+	ActionIds.KAI_FIRE_IMBUE: "Fire Imbue",
+	ActionIds.LUD_LUNGING: "Lunging Attack",
+	ActionIds.LUD_PRECISION: "Precision Strike",
+	ActionIds.LUD_SHIELD_BASH: "Shield Bash",
+	ActionIds.LUD_RALLY: "Rally",
+	ActionIds.NINOS_VICIOUS_MOCKERY: "Vicious Mockery",
+	ActionIds.NINOS_HEALING_WORD: "Healing Word",
+	ActionIds.NINOS_BLESS: "Bless",
+	ActionIds.NINOS_INSPIRE_ATTACK: "Inspire (Atk)",
+	ActionIds.CAT_FIRE_BOLT: "Fire Bolt",
+	ActionIds.CAT_FIREBALL: "Fireball",
+	ActionIds.CAT_MAGE_ARMOR: "Mage Armor"
+}
 
 
 func setup_state(party: Array, enemies: Array) -> void:
@@ -443,10 +464,14 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 		ActionIds.BOS_GREAXE_SLAM:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, targets))
 			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
 		ActionIds.BOS_TENDRIL_LASH:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, targets))
 			var lash_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 0.8))
 			var target_lash = get_actor_by_id(targets[0])
 			if target_lash != null:
@@ -455,6 +480,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			return lash_result
 		ActionIds.BOS_BATTLE_ROAR:
 			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, []))
 				var stacks = _count_status(actor, StatusEffectIds.ATK_UP)
 				if stacks < 2:
 					actor.add_status(StatusEffectFactory.atk_up(4, 0.25))
@@ -466,6 +492,8 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 		ActionIds.BOS_COLLECTORS_GRASP:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				add_message(_format_enemy_action(actor, action_id, targets))
 			battle_state.flags.marcus_pull_target = targets[0]
 			var pulled = get_actor_by_id(targets[0])
 			if pulled != null:
@@ -673,6 +701,39 @@ func _check_battle_end() -> void:
 		return
 	if get_alive_party().is_empty():
 		emit_signal("battle_ended", "defeat")
+
+
+func _display_action_name(action_id: String) -> String:
+	if ACTION_DISPLAY_NAMES.has(action_id):
+		return ACTION_DISPLAY_NAMES[action_id]
+	return action_id
+
+
+func _format_enemy_action(actor: Character, action_id: String, targets: Array) -> String:
+	var label = _display_action_name(action_id)
+	if targets.is_empty():
+		return "ENEMY: " + actor.display_name + " uses " + label + "!"
+	var target_names = []
+	for target_id in targets:
+		var target = get_actor_by_id(target_id)
+		if target != null:
+			target_names.append(target.display_name)
+	return "ENEMY: " + actor.display_name + " uses " + label + " on " + ", ".join(target_names) + "!"
+
+
+func format_action_declaration(actor_id: String, action: Dictionary) -> String:
+	var actor = get_actor_by_id(actor_id)
+	var name = actor.display_name if actor != null else actor_id
+	var label = _display_action_name(action.get("action_id", ""))
+	var targets = action.get("targets", [])
+	if targets.is_empty():
+		return name + " prepares " + label + "..."
+	var target_names = []
+	for target_id in targets:
+		var target = get_actor_by_id(target_id)
+		if target != null:
+			target_names.append(target.display_name)
+	return name + " prepares " + label + " on " + ", ".join(target_names) + "..."
 
 
 func _set_active_character(actor_id: String) -> void:

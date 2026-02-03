@@ -21,6 +21,8 @@ var action_list_container: VBoxContainer
 var menu_items: Array = []
 var disabled_actions: Dictionary = {}
 var input_block_until_ms: int = 0
+var cursor_nodes: Array = []
+var label_nodes: Array = []
 
 func _ready() -> void:
 	visible = false
@@ -114,14 +116,29 @@ func _build_submenu(category: String) -> void:
 func _render_menu_items() -> void:
 	for child in action_list_node.get_children():
 		child.queue_free()
+	cursor_nodes.clear()
+	label_nodes.clear()
 	
 	for item in menu_items:
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		var cursor = ColorRect.new()
+		cursor.color = Color(1.0, 0.9, 0.4)
+		cursor.custom_minimum_size = Vector2(8, 8)
+		cursor.pivot_offset = Vector2(4, 4)
+		cursor.rotation = 0.785398
+		cursor.visible = false
+		row.add_child(cursor)
+		cursor_nodes.append(cursor)
+
 		var label = Label.new()
 		var label_text = item["label"]
 		if disabled_actions.has(item["id"]):
 			label_text += " (X)"
 		label.text = label_text
-		action_list_node.add_child(label)
+		row.add_child(label)
+		label_nodes.append(label)
+		action_list_node.add_child(row)
 	
 	if menu_items.is_empty():
 		current_selection_index = 0
@@ -137,17 +154,21 @@ func _update_selection() -> void:
 	current_selection_index = clamp(current_selection_index, 0, menu_items.size() - 1)
 	
 	var idx = 0
-	for child in action_list_node.get_children():
+	for label in label_nodes:
 		if idx >= menu_items.size():
 			break
+		var item_id = menu_items[idx].get("id", "")
 		if idx == current_selection_index:
-			child.modulate = Color(1, 1, 0) # Highlight yellow
+			label.modulate = Color(1, 1, 0) # Highlight yellow
+			if idx < cursor_nodes.size():
+				cursor_nodes[idx].visible = true
 		else:
-			var item_id = menu_items[idx].get("id", "")
+			if idx < cursor_nodes.size():
+				cursor_nodes[idx].visible = false
 			if disabled_actions.has(item_id):
-				child.modulate = Color(0.6, 0.6, 0.6)
+				label.modulate = Color(0.6, 0.6, 0.6)
 			else:
-				child.modulate = Color(1, 1, 1)
+				label.modulate = Color(1, 1, 1)
 		idx += 1
 	
 	description_label.text = menu_items[current_selection_index].get("desc", "")

@@ -35,6 +35,10 @@ Date: 2026-02-03
 - Updated damage numbers (larger, orange, staggered for multi-hit).
 - Catraca’s main Attack now uses Fire Bolt; Fire Bolt removed from Magic submenu.
 - ATK_DOWN now uses its status value to scale damage.
+- Added enemy intent telegraph (2s) with player-facing action names.
+- Non-active idle now uses stepped 2-keyframe motion (low amplitude), active idle toned down.
+- Party HP and LB now use pill/progress bars with aligned text; LB turns blue at 100%.
+- Menu cursor uses a diamond indicator; description panel repositioned to avoid overlap.
 
 ## Next high-level steps
 1) Verify input mappings and menu flow stability (ui_up/down/left/right/accept/cancel).
