@@ -43,6 +43,7 @@ var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END
 var active_player_id = ""
 var battle_over: bool = false
 var pending_enemy_action: Dictionary = {}
+var input_locked: bool = false
 const ACTOR_SCALE := 2.0
 const BOSS_SCALE := 2.0
 const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
@@ -539,6 +540,7 @@ func _process_turn_loop() -> void:
 		state = "PLAYER_TURN"
 		message_log("Player turn: " + actor.display_name)
 		_apply_input_cooldown(250)
+		input_locked = false
 		battle_menu.set_enabled(true)
 		battle_menu.setup(actor)
 		_update_menu_disables(actor)
@@ -548,6 +550,7 @@ func _process_turn_loop() -> void:
 		state = "ENEMY_TURN"
 		message_log("Enemy turn: " + actor.display_name)
 		_apply_input_cooldown(250)
+		input_locked = true
 		battle_menu.set_enabled(false)
 		target_cursor.deactivate()
 		await _telegraph_enemy_intent(actor)
@@ -592,6 +595,9 @@ func _show_enemy_intent(text: String) -> void:
 func _on_menu_action_selected(action_id: String) -> void:
 	if _is_input_cooldown_active():
 		return
+	if input_locked:
+		return
+	input_locked = true
 	_apply_input_cooldown(200)
 	var is_metamagic = action_id == ActionIds.CAT_METAMAGIC_QUICKEN or action_id == ActionIds.CAT_METAMAGIC_TWIN
 	if is_metamagic and action_id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
@@ -634,6 +640,7 @@ func _on_menu_action_selected(action_id: String) -> void:
 
 func _on_menu_action_blocked(reason: String) -> void:
 	message_log(reason)
+	input_locked = false
 	battle_menu.visible = true
 
 
@@ -653,6 +660,7 @@ func _on_target_selected(target_ids: Array) -> void:
 func _on_target_canceled() -> void:
 	# Go back to menu
 	target_cursor.deactivate()
+	input_locked = false
 	var actor = battle_manager.get_actor_by_id(active_player_id)
 	if actor:
 		battle_menu.set_enabled(true)
@@ -750,10 +758,13 @@ func _execute_next_action() -> void:
 	var result = battle_manager.process_next_action()
 	var payload = result.get("payload", result)
 	message_log("Action Result: " + str(payload))
+	if result.get("ok") == false:
+		input_locked = false
 	if payload.get("metamagic", "") != "":
 		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
 		if actor_meta:
 			message_log("Metamagic set: " + str(payload.get("metamagic", "")))
+			input_locked = false
 			battle_menu.visible = true
 			battle_menu.open_magic_submenu()
 			_update_menu_disables(actor_meta)
@@ -765,6 +776,7 @@ func _execute_next_action() -> void:
 		battle_manager.process_end_of_turn_effects(actor)
 	if payload.get("quicken", false) and actor and actor.id == "catraca":
 		message_log("Quicken: extra action!")
+		input_locked = false
 		battle_menu.setup(actor)
 		_update_menu_disables(actor)
 		return

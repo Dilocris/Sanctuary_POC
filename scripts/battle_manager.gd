@@ -649,9 +649,21 @@ func _check_boss_phase_transition(target: Character) -> void:
 	if target.phase == 1 and hp_percent <= 60.0:
 		target.phase = 2
 		add_message("The symbiote armor awakens fully!")
+		_reset_turn_order_after_phase()
 	if target.phase == 2 and hp_percent <= 30.0:
 		target.phase = 3
 		add_message("The Collector's desperation takes hold!")
+		_reset_turn_order_after_phase()
+
+func _reset_turn_order_after_phase() -> void:
+	var order: Array = []
+	for member in battle_state.party:
+		if member.hp_current > 0:
+			order.append(member.id)
+	for enemy in battle_state.enemies:
+		if enemy.hp_current > 0:
+			order.append(enemy.id)
+	battle_state.turn_order = order
 
 func _apply_bless_bonus(attacker: Character, base_damage: int) -> int:
 	if attacker == null:

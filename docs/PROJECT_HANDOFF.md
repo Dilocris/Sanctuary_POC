@@ -82,6 +82,8 @@
 - **Poison Visual**: Added slow oscillating green tint while poisoned.
 - **Enemy Intent**: Telegraph uses player-facing action names; actions now match telegraph.
 - **Fixes**: Removed duplicate boss action factory functions; fixed target cursor outline shader.
+- **Input Lock**: Prevents multi-execution when holding confirm; unlocks on valid transitions.
+- **Phase Transition Order**: Phase change resets turn order so party acts before boss.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

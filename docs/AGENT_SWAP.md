@@ -44,6 +44,8 @@ Date: 2026-02-03
 - Indefinite statuses no longer expire; Guard Stance/Mage Armor persist as intended.
 - Fixed duplicate boss action functions in `action_factory.gd`.
 - Fixed target cursor outline shader (no early return in fragment).
+- Added input lock to prevent action spamming by holding confirm.
+- Phase transition now resets turn order so party acts before boss.
 
 ## Next high-level steps
 1) Verify input mappings and menu flow stability (ui_up/down/left/right/accept/cancel).

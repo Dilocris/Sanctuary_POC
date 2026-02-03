@@ -34,9 +34,6 @@ static func create_action(action_id: String, actor_id: String, targets: Array) -
 		ActionIds.BOS_DARK_REGEN: return marcus_dark_regen(actor_id)
 		ActionIds.BOS_SYMBIOTIC_RAGE: return marcus_symbiotic_rage(actor_id, targets)
 		ActionIds.BOS_VENOM_STRIKE: return marcus_venom_strike(actor_id, targets)
-		ActionIds.BOS_DARK_REGEN: return marcus_dark_regen(actor_id)
-		ActionIds.BOS_SYMBIOTIC_RAGE: return marcus_symbiotic_rage(actor_id, targets)
-		ActionIds.BOS_VENOM_STRIKE: return marcus_venom_strike(actor_id, targets)
 		_:
 			return basic_attack(actor_id, t1)
 
@@ -290,14 +287,6 @@ static func marcus_collectors_grasp(actor_id: String, target_id: String) -> Dict
 		"actor_id": actor_id,
 		"targets": [target_id],
 		"tags": [ActionTags.SINGLE]
-	}
-
-static func marcus_dark_regen(actor_id: String) -> Dictionary:
-	return {
-		"action_id": ActionIds.BOS_DARK_REGEN,
-		"actor_id": actor_id,
-		"targets": [actor_id],
-		"tags": [ActionTags.SELF, ActionTags.HEALING]
 	}
 
 static func marcus_dark_regen(actor_id: String) -> Dictionary:

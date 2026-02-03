@@ -12,6 +12,7 @@ var selected_ids: Array = []
 var highlighted_targets: Array = []
 var original_materials: Dictionary = {}
 var outline_shader: ShaderMaterial
+var current_highlight: Node = null
 
 func _ready() -> void:
 	visible = false
@@ -26,12 +27,12 @@ func _outline_setup() -> void:
 	var shader = Shader.new()
 	shader.code = """
 shader_type canvas_item;
-uniform vec4 outline_color : source_color = vec4(0.9, 0.9, 0.5, 0.9);
+uniform vec4 outline_color : source_color = vec4(0.95, 0.95, 0.7, 0.6);
 uniform float outline_size = 1.0;
 void fragment(){
-	vec4 col = texture(TEXTURE, UV);
-	if(col.a > 0.0){
-		COLOR = col;
+	vec4 base = texture(TEXTURE, UV) * COLOR;
+	if(base.a > 0.0){
+		COLOR = base;
 	} else {
 		float a = 0.0;
 		for(int x=-1;x<=1;x++){
@@ -41,7 +42,7 @@ void fragment(){
 			}
 		}
 		if(a > 0.0){
-			COLOR = outline_color;
+			COLOR = outline_color * COLOR.a;
 		}else{
 			discard;
 		}
@@ -176,25 +177,32 @@ func _set_highlight(target: Node, persist: bool = false) -> void:
 	_apply_outline(target, true)
 	if persist and not highlighted_targets.has(target):
 		highlighted_targets.append(target)
+	if not persist:
+		current_highlight = target
 
 func _clear_highlights() -> void:
 	for target in highlighted_targets:
 		_apply_outline(target, false)
 	highlighted_targets.clear()
+	if current_highlight != null:
+		_apply_outline(current_highlight, false)
+		current_highlight = null
 
 func _apply_outline(target: Node, enable: bool) -> void:
 	if target == null:
 		return
 	var visual = target.get_node_or_null("Visual")
 	if visual is Sprite2D:
+		var key = visual.get_instance_id()
 		if enable:
-			if not original_materials.has(visual):
-				original_materials[visual] = visual.material
-			visual.material = outline_shader
+			if not original_materials.has(key):
+				original_materials[key] = visual.material
+			var mat = outline_shader.duplicate()
+			visual.material = mat
 		else:
-			if original_materials.has(visual):
-				visual.material = original_materials[visual]
-				original_materials.erase(visual)
+			if original_materials.has(key):
+				visual.material = original_materials[key]
+				original_materials.erase(key)
 	elif visual is CanvasItem:
 		if enable:
 			visual.modulate = Color(1.0, 1.0, 0.8)
