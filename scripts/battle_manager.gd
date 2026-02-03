@@ -8,6 +8,7 @@ signal message_added(text: String)
 signal action_enqueued(action: Dictionary)
 signal action_executed(result: Dictionary)
 signal battle_ended(result: String)
+signal status_tick(actor_id: String, amount: int, kind: String)
 
 var battle_state := {
 	"phase": 1,
@@ -25,6 +26,9 @@ var battle_state := {
 const TURN_ORDER_RANDOM_MIN := 0
 const TURN_ORDER_RANDOM_MAX := 5
 const MESSAGE_LOG_LIMIT := 12
+const LIMIT_GAIN_DEALT_DIV := 10.0
+const LIMIT_GAIN_TAKEN_DIV := 5.0
+const LIMIT_GAIN_DOT_DIV := 8.0
 const ACTION_DISPLAY_NAMES := {
 	ActionIds.BOS_GREAXE_SLAM: "Greataxe Slam",
 	ActionIds.BOS_TENDRIL_LASH: "Tendril Lash",
@@ -47,7 +51,11 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.NINOS_INSPIRE_ATTACK: "Inspire (Atk)",
 	ActionIds.CAT_FIRE_BOLT: "Fire Bolt",
 	ActionIds.CAT_FIREBALL: "Fireball",
-	ActionIds.CAT_MAGE_ARMOR: "Mage Armor"
+	ActionIds.CAT_MAGE_ARMOR: "Mage Armor",
+	ActionIds.KAI_LIMIT: "Inferno Fist",
+	ActionIds.LUD_LIMIT: "Dragonfire Roar",
+	ActionIds.NINOS_LIMIT: "Siren's Call",
+	ActionIds.CAT_LIMIT: "Genie's Wrath"
 }
 
 
@@ -176,6 +184,7 @@ func process_next_action() -> Dictionary:
 		emit_signal("action_executed", invalid_result)
 		return invalid_result
 	var result = _resolve_action(action)
+	result["action_id"] = action.get("action_id", "")
 	battle_state.action_log.append({"type": "executed", "result": result})
 	emit_signal("action_executed", result)
 	if result.get("ok", false):
@@ -189,6 +198,9 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 	var actor_id = action.get("actor_id", "")
 	var targets = action.get("targets", [])
 	var actor = get_actor_by_id(actor_id)
+	if actor != null and actor.has_status(StatusEffectIds.GENIES_WRATH) and action.get("mp_cost", 0) > 0:
+		action["mp_cost"] = 0
+		action["genies_wrath"] = true
 	if actor != null and not actor.can_use_action(action):
 		return ActionResult.new(false, "insufficient_resources").to_dict()
 	match action_id:
@@ -396,9 +408,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action) # MP cost 0 but standard call
+				_consume_genies_wrath_charge(actor)
 			var target_fb = get_actor_by_id(targets[0])
 			var meta = consume_metamagic(actor_id)
 			var dmg_fb = randi_range(1, 10) + (int(actor.stats.mag * 0.5) if actor else 0)
+			dmg_fb = _apply_genies_wrath_bonus(actor, dmg_fb)
 			dmg_fb = _apply_bless_bonus(actor, dmg_fb)
 			if target_fb != null:
 				_apply_damage_with_limit(actor, target_fb, dmg_fb)
@@ -420,6 +434,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
+				_consume_genies_wrath_charge(actor)
 			var meta_fb = consume_metamagic(actor_id)
 			var total_dmg_fireball = 0
 			var hit_targets = []
@@ -429,6 +444,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					var dmg_val = randi_range(8, 64) # 8d6 roughly
 					# For poc, simple formula:
 					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
+					dmg_val = _apply_genies_wrath_bonus(actor, dmg_val)
 					dmg_val = _apply_bless_bonus(actor, dmg_val)
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
@@ -447,6 +463,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					add_message(actor.display_name + " already has Mage Armor.")
 					return ActionResult.new(false, "already_active").to_dict()
 				actor.consume_resources(action)
+				_consume_genies_wrath_charge(actor)
 				actor.add_status(StatusEffectFactory.mage_armor())
 				add_message(actor.display_name + " casts Mage Armor!")
 				return ActionResult.new(true, "", {
@@ -454,6 +471,68 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					"attacker_id": actor_id,
 					"quicken": meta_ma == "QUICKEN"
 				}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
+		ActionIds.KAI_LIMIT:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.reset_limit_gauge()
+			var target = get_actor_by_id(targets[0])
+			var hit_list: Array = []
+			for _i in range(4):
+				var base = DamageCalculator.calculate_physical_damage(actor, target, 0.8)
+				var bonus = randi_range(1, 6)
+				var total = base + bonus
+				_apply_damage_with_limit(actor, target, total)
+				hit_list.append(total)
+			var last_base = DamageCalculator.calculate_physical_damage(actor, target, 2.0)
+			var last_bonus = randi_range(4, 24)
+			var last_total = (last_base * 2) + last_bonus
+			_apply_damage_with_limit(actor, target, last_total)
+			hit_list.append(last_total)
+			var sum = 0
+			for hit in hit_list:
+				sum += int(hit)
+			add_message(actor.display_name + " unleashes Inferno Fist!")
+			return ActionResult.new(true, "", {
+				"damage": sum,
+				"damage_instances": hit_list,
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
+		ActionIds.LUD_LIMIT:
+			if actor != null:
+				actor.reset_limit_gauge()
+			add_message(actor.display_name + " unleashes Dragonfire Roar!")
+			for enemy in get_alive_enemies():
+				if randf() <= 0.7:
+					enemy.add_status(StatusEffectFactory.charm(1))
+			for ally in get_alive_party():
+				ally.add_status(StatusEffectFactory.atk_up(3, 0.25))
+			return ActionResult.new(true, "", {
+				"buff": "atk_up",
+				"debuff": "charm",
+				"attacker_id": actor_id
+			}).to_dict()
+		ActionIds.NINOS_LIMIT:
+			if actor != null:
+				actor.reset_limit_gauge()
+			add_message(actor.display_name + " sings Siren's Call!")
+			for ally in get_alive_party():
+				ally.heal(80)
+				_remove_negative_statuses(ally)
+				ally.add_status(StatusEffectFactory.regen(3, 15))
+			return ActionResult.new(true, "", {
+				"healed": 80,
+				"buff": "regen",
+				"attacker_id": actor_id
+			}).to_dict()
+		ActionIds.CAT_LIMIT:
+			if actor != null:
+				actor.reset_limit_gauge()
+				actor.add_status(StatusEffectFactory.genies_wrath(3))
+				add_message(actor.display_name + " invokes Genie's Wrath!")
+				return ActionResult.new(true, "", {"buff": "genies_wrath", "attacker_id": actor_id}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
 		ActionIds.CAT_METAMAGIC_QUICKEN:
 			if actor != null:
@@ -578,6 +657,9 @@ func _validate_action(action: Dictionary) -> Dictionary:
 			var cost = action.get("resource_cost", 0)
 			if actor.get_resource_current(action.resource_type) < cost:
 				return ActionResult.new(false, "insufficient_resources").to_dict()
+	if action.get("action_id", "") in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
+		if actor.limit_gauge < 100:
+			return ActionResult.new(false, "limit_not_ready").to_dict()
 	if actor.has_status(StatusEffectIds.GUARD_STANCE):
 		if action.get("action_id", "") == ActionIds.BASIC_ATTACK:
 			return ActionResult.new(false, "guard_stance_restricts").to_dict()
@@ -597,11 +679,13 @@ func process_end_of_turn_effects(actor: Character) -> void:
 		var value = _get_status_value(status)
 		if tags.has("DOT"):
 			actor.apply_damage(value)
-			_update_limit_gauges(null, actor, value)
+			_add_limit_on_damage_taken(actor, value, LIMIT_GAIN_DOT_DIV)
 			add_message(actor.display_name + " takes " + str(value) + " damage.")
+			emit_signal("status_tick", actor.id, value, "DOT")
 		if tags.has("HOT"):
 			actor.heal(value)
 			add_message(actor.display_name + " recovers " + str(value) + " HP.")
+			emit_signal("status_tick", actor.id, value, "HOT")
 
 		_tick_status(status)
 		if _is_status_expired(status):
@@ -649,10 +733,12 @@ func _check_boss_phase_transition(target: Character) -> void:
 	if target.phase == 1 and hp_percent <= 60.0:
 		target.phase = 2
 		add_message("The symbiote armor awakens fully!")
+		emit_signal("phase_changed", 2)
 		_reset_turn_order_after_phase()
 	if target.phase == 2 and hp_percent <= 30.0:
 		target.phase = 3
 		add_message("The Collector's desperation takes hold!")
+		emit_signal("phase_changed", 3)
 		_reset_turn_order_after_phase()
 
 func _reset_turn_order_after_phase() -> void:
@@ -671,6 +757,43 @@ func _apply_bless_bonus(attacker: Character, base_damage: int) -> int:
 	if attacker.has_status(StatusEffectIds.BLESS):
 		return base_damage + randi_range(1, 4)
 	return base_damage
+
+func _apply_genies_wrath_bonus(attacker: Character, base_damage: int) -> int:
+	if attacker == null:
+		return base_damage
+	if not attacker.has_status(StatusEffectIds.GENIES_WRATH):
+		return base_damage
+	return int(floor(base_damage * 1.5))
+
+func _consume_genies_wrath_charge(actor: Character) -> void:
+	if actor == null:
+		return
+	if not actor.has_status(StatusEffectIds.GENIES_WRATH):
+		return
+	for status in actor.status_effects:
+		if status is StatusEffect and status.id == StatusEffectIds.GENIES_WRATH:
+			status.duration -= 1
+			status.value -= 1
+			if status.duration <= 0:
+				actor.remove_status(StatusEffectIds.GENIES_WRATH)
+			break
+		elif status is Dictionary and status.get("id", "") == StatusEffectIds.GENIES_WRATH:
+			status["duration"] = status.get("duration", 0) - 1
+			status["value"] = status.get("value", 0) - 1
+			if status["duration"] <= 0:
+				actor.remove_status(StatusEffectIds.GENIES_WRATH)
+			break
+
+func _remove_negative_statuses(actor: Character) -> void:
+	if actor == null:
+		return
+	var removals: Array = []
+	for status in actor.status_effects:
+		var tags = _get_status_tags(status)
+		if tags.has(StatusTags.NEGATIVE):
+			removals.append(_get_status_id(status))
+	for status_id in removals:
+		actor.remove_status(status_id)
 
 
 func _try_riposte(attacker: Character, defender: Character) -> void:
@@ -709,9 +832,16 @@ func _update_limit_gauges(attacker: Character, target: Character, amount: int) -
 	if amount <= 0:
 		return
 	if attacker != null:
-		attacker.add_limit_gauge(int(floor(amount / 10.0)))
+		attacker.add_limit_gauge(int(floor(amount / LIMIT_GAIN_DEALT_DIV)))
 	if target != null:
-		target.add_limit_gauge(int(floor(amount / 5.0)))
+		_add_limit_on_damage_taken(target, amount, LIMIT_GAIN_TAKEN_DIV)
+
+func _add_limit_on_damage_taken(target: Character, amount: int, divisor: float) -> void:
+	if target == null:
+		return
+	if amount <= 0:
+		return
+	target.add_limit_gauge(int(floor(amount / divisor)))
 
 
 func _set_metamagic(actor_id: String, meta: String) -> void:

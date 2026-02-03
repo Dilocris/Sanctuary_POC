@@ -25,6 +25,12 @@ const CAT_MAGIC_MISSILE := "catraca_magic_missile"
 const CAT_METAMAGIC_QUICKEN := "catraca_metamagic_quicken"
 const CAT_METAMAGIC_TWIN := "catraca_metamagic_twin"
 
+# Limit Breaks
+const KAI_LIMIT := "kairus_limit_break"
+const LUD_LIMIT := "ludwig_limit_break"
+const NINOS_LIMIT := "ninos_limit_break"
+const CAT_LIMIT := "catraca_limit_break"
+
 # Boss actions (Marcus Gelt)
 const BOS_GREAXE_SLAM := "marcus_greataxe_slam"
 const BOS_TENDRIL_LASH := "marcus_tendril_lash"

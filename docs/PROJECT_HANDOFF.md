@@ -31,6 +31,8 @@
   - Non-active idle is now stepped (2 keyframes, low amplitude) with per-actor phase offsets.
   - Party panel HP uses pill bars with bold current HP and smaller max HP.
   - Limit Break uses a progress bar (grey until 100%, blue at full) with aligned % text.
+  - Limit Breaks are now wired for all four heroes with a cinematic overlay text per activation.
+  - Limit Gauge now accrues on damage dealt and damage taken (DOT included, lower gain for DOT).
   - Enemy telegraph shows a 2s intent callout using player-facing action names.
   - Menu cursor now uses a small diamond marker; description panel shifted to avoid overlap.
   - Catraca’s Attack now uses Fire Bolt; Fire Bolt removed from Magic submenu.
@@ -60,7 +62,7 @@
 - **Inspiration Logic**: Currently just logs consumption; needs hook into `AttackResult` calculation for the *next* attack.
 - **Menu-Driven Flow**: Battle loop now depends on menu selection. Ensure input mapping exists for `ui_up/down/left/right/accept/cancel`.
 - **Metamagic**: Quicken/Twin selection is wired; Twin targeting UI and Quicken second-action guardrails need refinement.
-- **Limit Gauge**: Limit bar is visible, but no Limit Break actions wired yet.
+- **Limit Gauge**: Limit bar is visible; limit breaks are now fully wired and executable.
 - **Resource Gating**: Menu now disables actions when resources are insufficient and shows a reason on selection.
 - **Twin Targeting**: Added DOUBLE-target selection mode for pending Twin Spell (requires 2 targets).
 - **Visuals**: Character/boss sprites are now scaled (2.0x) and positioned to match the provided reference; background is native 1152x648.
@@ -84,6 +86,7 @@
 - **Fixes**: Removed duplicate boss action factory functions; fixed target cursor outline shader.
 - **Input Lock**: Prevents multi-execution when holding confirm; unlocks on valid transitions.
 - **Phase Transition Order**: Phase change resets turn order so party acts before boss.
+- **DOT/HOT Numbers**: Floating numbers now display for DOT/HOT ticks.
 
 ### 4. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.

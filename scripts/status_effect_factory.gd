@@ -13,6 +13,10 @@ static func stun(turns: int = 1) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.STUN, turns, 0, [StatusTags.NEGATIVE, StatusTags.CROWD_CONTROL, StatusTags.CLEANSABLE])
 
 
+static func charm(turns: int = 1) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.CHARM, turns, 0, [StatusTags.NEGATIVE, StatusTags.CROWD_CONTROL, StatusTags.CLEANSABLE])
+
+
 static func fire_imbue() -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.FIRE_IMBUE, -1, 0, [StatusTags.POSITIVE, StatusTags.TOGGLE, StatusTags.ELEMENTAL])
 
@@ -41,6 +45,10 @@ static func mage_armor() -> StatusEffect:
 	# Lasts a few turns; not a toggle.
 	# Effect: DEF * 1.5. Value could store the multiplier scaled (150).
 	return StatusEffect.new(StatusEffectIds.MAGE_ARMOR, 3, 150, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
+static func genies_wrath(charges: int = 3) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.GENIES_WRATH, charges, charges, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
 static func inspire_attack(turns: int = 1) -> StatusEffect:

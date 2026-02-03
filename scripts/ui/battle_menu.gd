@@ -57,6 +57,15 @@ func open_magic_submenu() -> void:
 
 func _build_main_menu() -> void:
 	menu_items.clear()
+	if active_actor.limit_gauge >= 100:
+		var limit_id = ""
+		match active_actor.id:
+			"kairus": limit_id = ActionIds.KAI_LIMIT
+			"ludwig": limit_id = ActionIds.LUD_LIMIT
+			"ninos": limit_id = ActionIds.NINOS_LIMIT
+			"catraca": limit_id = ActionIds.CAT_LIMIT
+		if limit_id != "":
+			menu_items.append({"label": "Limit Break", "id": limit_id, "desc": "Unleash a powerful limit ability (100%)."})
 	# Common Attack (Catraca uses Fire Bolt as her basic)
 	if active_actor.id == "catraca":
 		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Single target fire damage."})

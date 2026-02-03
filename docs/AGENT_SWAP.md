@@ -46,6 +46,9 @@ Date: 2026-02-03
 - Fixed target cursor outline shader (no early return in fragment).
 - Added input lock to prevent action spamming by holding confirm.
 - Phase transition now resets turn order so party acts before boss.
+- Implemented all four Limit Break actions and cinematic overlay text on activation.
+- Limit Gauge now accrues on damage dealt and damage taken (DOT included at reduced rate).
+- DOT/HOT ticks now show floating numbers.
 
 ## Next high-level steps
 1) Verify input mappings and menu flow stability (ui_up/down/left/right/accept/cancel).

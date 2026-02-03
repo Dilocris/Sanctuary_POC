@@ -11,6 +11,10 @@ var turn_order_display: Label # Visible turn order at top
 var combat_log_display: Label # Toast for battle messages
 var enemy_intent_label: Label
 var enemy_intent_bg: ColorRect
+var phase_overlay: ColorRect
+var phase_label: Label
+var limit_overlay: ColorRect
+var limit_label: Label
 var boss_hp_bar: ProgressBar
 var boss_hp_bar_label: Label
 var boss_hp_fill_style: StyleBoxFlat
@@ -98,6 +102,8 @@ func _ready() -> void:
 	battle_manager.action_enqueued.connect(_on_action_enqueued)
 	battle_manager.action_executed.connect(_on_action_executed)
 	battle_manager.battle_ended.connect(_on_battle_ended)
+	battle_manager.phase_changed.connect(_on_phase_changed)
+	battle_manager.status_tick.connect(_on_status_tick)
 	ai_controller = AiController.new()
 
 	var party: Array = [
@@ -438,6 +444,9 @@ func _on_action_enqueued(action: Dictionary) -> void:
 
 func _on_action_executed(result: Dictionary) -> void:
 	print("Action executed: ", result)
+	var action_id = result.get("action_id", "")
+	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
+		_show_limit_overlay(action_id)
 	
 	# Spawn Floating Text based on result
 	if result.get("ok"):
@@ -499,6 +508,91 @@ func _on_battle_ended(result: String) -> void:
 	print("Battle ended: ", result)
 	battle_over = true
 	_update_status_label(["Battle ended: " + result])
+
+func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
+	var actor = battle_manager.get_actor_by_id(actor_id)
+	if actor == null:
+		return
+	if kind == "DOT":
+		_create_status_tick_text(actor.position, str(amount), Color(0.6, 0.2, 0.9))
+	elif kind == "HOT":
+		_create_status_tick_text(actor.position, str(amount), Color(0.2, 0.8, 0.3))
+
+func _on_phase_changed(phase: int) -> void:
+	input_locked = true
+	battle_menu.set_enabled(false)
+	_show_phase_overlay(phase)
+
+func _show_phase_overlay(phase: int) -> void:
+	var text = "PHASE " + str(phase)
+	if phase == 2:
+		text = "PHASE 2 - THE SYMBIOTE AWAKENS"
+	elif phase == 3:
+		text = "PHASE 3 - DESPERATION"
+	if phase_label:
+		phase_label.text = text
+	if phase_overlay:
+		phase_overlay.visible = true
+	if phase_label:
+		phase_label.visible = true
+	var tween = create_tween()
+	phase_overlay.modulate.a = 0.0
+	phase_label.modulate.a = 0.0
+	tween.tween_property(phase_overlay, "modulate:a", 1.0, 0.4)
+	tween.tween_property(phase_label, "modulate:a", 1.0, 0.4)
+	tween.tween_interval(1.6)
+	tween.tween_property(phase_overlay, "modulate:a", 0.0, 0.5)
+	tween.tween_property(phase_label, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(func ():
+		if phase_overlay:
+			phase_overlay.visible = false
+		if phase_label:
+			phase_label.visible = false
+		if state == "PLAYER_TURN":
+			input_locked = false
+			var actor = battle_manager.get_actor_by_id(active_player_id)
+			if actor:
+				battle_menu.set_enabled(true)
+				battle_menu.setup(actor)
+	)
+
+func _show_limit_overlay(action_id: String) -> void:
+	var text = "LIMIT BREAK"
+	var color = Color(1, 0.6, 0.2)
+	match action_id:
+		ActionIds.KAI_LIMIT:
+			text = "INFERNO FIST"
+			color = Color(1.0, 0.4, 0.2)
+		ActionIds.LUD_LIMIT:
+			text = "DRAGONFIRE ROAR"
+			color = Color(1.0, 0.5, 0.1)
+		ActionIds.NINOS_LIMIT:
+			text = "SIREN'S CALL"
+			color = Color(0.2, 0.7, 1.0)
+		ActionIds.CAT_LIMIT:
+			text = "GENIE'S WRATH"
+			color = Color(1.0, 0.2, 0.8)
+	if limit_label:
+		limit_label.text = text
+		limit_label.modulate = color
+	if limit_overlay:
+		limit_overlay.visible = true
+	if limit_label:
+		limit_label.visible = true
+	var tween = create_tween()
+	limit_overlay.modulate.a = 0.0
+	limit_label.modulate.a = 0.0
+	tween.tween_property(limit_overlay, "modulate:a", 0.8, 0.25)
+	tween.tween_property(limit_label, "modulate:a", 1.0, 0.25)
+	tween.tween_interval(0.6)
+	tween.tween_property(limit_overlay, "modulate:a", 0.0, 0.35)
+	tween.tween_property(limit_label, "modulate:a", 0.0, 0.35)
+	tween.tween_callback(func ():
+		if limit_overlay:
+			limit_overlay.visible = false
+		if limit_label:
+			limit_label.visible = false
+	)
 
 
 
@@ -911,6 +1005,42 @@ func _setup_game_ui() -> void:
 	enemy_intent_bg.anchor_bottom = 1.0
 	enemy_intent_label.add_child(enemy_intent_bg)
 	add_child(enemy_intent_label)
+
+	# Phase Overlay
+	phase_overlay = ColorRect.new()
+	phase_overlay.color = Color(0.2, 0.0, 0.2, 0.65)
+	phase_overlay.position = Vector2(0, 0)
+	phase_overlay.size = Vector2(1152, 648)
+	phase_overlay.visible = false
+	phase_overlay.z_index = 100
+	add_child(phase_overlay)
+	phase_label = Label.new()
+	phase_label.text = ""
+	phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	phase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	phase_label.size = Vector2(1152, 648)
+	phase_label.add_theme_font_size_override("font_size", 28)
+	phase_label.visible = false
+	phase_label.z_index = 101
+	add_child(phase_label)
+
+	# Limit Overlay
+	limit_overlay = ColorRect.new()
+	limit_overlay.color = Color(0.0, 0.0, 0.0, 0.55)
+	limit_overlay.position = Vector2(0, 0)
+	limit_overlay.size = Vector2(1152, 648)
+	limit_overlay.visible = false
+	limit_overlay.z_index = 110
+	add_child(limit_overlay)
+	limit_label = Label.new()
+	limit_label.text = ""
+	limit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	limit_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	limit_label.size = Vector2(1152, 648)
+	limit_label.add_theme_font_size_override("font_size", 30)
+	limit_label.visible = false
+	limit_label.z_index = 111
+	add_child(limit_label)
 	
 	# Boss HP (Below Boss)
 	# Boss HP label is attached to boss in _make_boss()
@@ -1170,6 +1300,20 @@ func _create_damage_text(pos: Vector2, text: String) -> void:
 	var tween = create_tween()
 	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(label.queue_free)
+
+func _create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
+	var label = Label.new()
+	label.text = text
+	label.modulate = color
+	label.position = pos + Vector2(0, -40)
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 2)
+	add_child(label)
+	var tween = create_tween()
+	tween.parallel().tween_property(label, "position:y", label.position.y - 30, 0.9)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
 	tween.tween_callback(label.queue_free)
 
 func _update_active_idle_motion(active_id: String) -> void:

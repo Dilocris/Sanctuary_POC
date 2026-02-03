@@ -157,6 +157,10 @@ func add_limit_gauge(amount: int) -> void:
 	limit_gauge = clamp(limit_gauge + amount, 0, LIMIT_GAUGE_MAX)
 
 
+func reset_limit_gauge() -> void:
+	limit_gauge = 0
+
+
 func _merge_stats(overrides: Dictionary) -> Dictionary:
 	var merged := stats.duplicate(true)
 	for key in overrides.keys():
