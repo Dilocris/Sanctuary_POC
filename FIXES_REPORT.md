@@ -255,6 +255,14 @@ id = "kairus"
 
 **Result:** Resources now load with correct script binding. `data.get_script() == ActorDataScript` returns `true`, enabling proper typed resource access without legacy fallback.
 
+**Note on line endings:**
+- Git reported CRLF → LF normalization warnings for actor `.tres` files:
+  - `data/actors/catraca.tres`
+  - `data/actors/kairus.tres`
+  - `data/actors/ludwig.tres`
+  - `data/actors/marcus_gelt.tres`
+  - `data/actors/ninos.tres`
+
 ### Phase 8: Remaining (Reprioritized)
 
 | Priority | Phase | Component | Notes |
