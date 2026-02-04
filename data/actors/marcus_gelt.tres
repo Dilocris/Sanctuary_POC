@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ActorData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/actor_data.gd" id=1]
+
+[resource]
+script = ExtResource("1")
+id = "marcus_gelt"
+display_name = "Marcus Gelt"
+stats = {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38}
+resources = {}
+position = Vector2(286, 248)
+color = Color(0, 0, 0, 1)
+is_boss = true
+phase = 1

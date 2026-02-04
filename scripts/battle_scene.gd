@@ -45,6 +45,64 @@ const LOWER_UI_TOP := 492
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
+const ActorDataScript = preload("res://scripts/resources/actor_data.gd")
+const DataCloneUtil = preload("res://scripts/utils/data_clone.gd")
+const ACTOR_DATA_PATHS := [
+	"res://data/actors/kairus.tres",
+	"res://data/actors/ludwig.tres",
+	"res://data/actors/ninos.tres",
+	"res://data/actors/catraca.tres"
+]
+const BOSS_DATA_PATHS := [
+	"res://data/actors/marcus_gelt.tres"
+]
+
+const LEGACY_PARTY_DATA := [
+	{
+		"id": "kairus",
+		"display_name": "Kairus",
+		"stats": {"hp_max": 450, "mp_max": 60, "atk": 62, "def": 42, "mag": 28, "spd": 55},
+		"resources": {"ki": {"current": 6, "max": 6}},
+		"position": BattleRenderer.HERO_POSITIONS.kairus,
+		"color": Color(0.5, 0, 0.5)
+	},
+	{
+		"id": "ludwig",
+		"display_name": "Ludwig",
+		"stats": {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34},
+		"resources": {"superiority_dice": {"current": 4, "max": 4}},
+		"position": BattleRenderer.HERO_POSITIONS.ludwig,
+		"color": Color.GRAY
+	},
+	{
+		"id": "ninos",
+		"display_name": "Ninos",
+		"stats": {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42},
+		"resources": {"bardic_inspiration": {"current": 4, "max": 4}},
+		"position": BattleRenderer.HERO_POSITIONS.ninos,
+		"color": Color.GREEN
+	},
+	{
+		"id": "catraca",
+		"display_name": "Catraca",
+		"stats": {"hp_max": 360, "mp_max": 120, "atk": 30, "def": 32, "mag": 68, "spd": 40},
+		"resources": {"sorcery_points": {"current": 5, "max": 5}},
+		"position": BattleRenderer.HERO_POSITIONS.catraca,
+		"color": Color.RED
+	}
+]
+
+const LEGACY_BOSS_DATA := [
+	{
+		"id": "marcus_gelt",
+		"display_name": "Marcus Gelt",
+		"stats": {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38},
+		"phase": 1,
+		"position": BattleRenderer.BOSS_POSITION,
+		"color": Color.BLACK,
+		"is_boss": true
+	}
+]
 
 var ai_controller: AiController
 var animation_controller: BattleAnimationController
@@ -108,51 +166,35 @@ func _ready() -> void:
 	battle_manager.status_tick.connect(_on_status_tick)
 	ai_controller = AiController.new()
 
-	var party: Array = [
-		_make_character({
-			"id": "kairus",
-			"display_name": "Kairus",
-			"stats": {"hp_max": 450, "mp_max": 60, "atk": 62, "def": 42, "mag": 28, "spd": 55},
-			"resources": {"ki": {"current": 6, "max": 6}},
-			"position": BattleRenderer.HERO_POSITIONS.kairus,
-			"color": Color(0.5, 0, 0.5)
-		}),
-		_make_character({
-			"id": "ludwig",
-			"display_name": "Ludwig",
-			"stats": {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34},
-			"resources": {"superiority_dice": {"current": 4, "max": 4}},
-			"position": BattleRenderer.HERO_POSITIONS.ludwig,
-			"color": Color.GRAY
-		}),
-		_make_character({
-			"id": "ninos",
-			"display_name": "Ninos",
-			"stats": {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42},
-			"resources": {"bardic_inspiration": {"current": 4, "max": 4}},
-			"position": BattleRenderer.HERO_POSITIONS.ninos,
-			"color": Color.GREEN
-		}),
-		_make_character({
-			"id": "catraca",
-			"display_name": "Catraca",
-			"stats": {"hp_max": 360, "mp_max": 120, "atk": 30, "def": 32, "mag": 68, "spd": 40},
-			"resources": {"sorcery_points": {"current": 5, "max": 5}},
-			"position": BattleRenderer.HERO_POSITIONS.catraca,
-			"color": Color.RED
-		})
-	]
+	var party: Array = []
+	for path in ACTOR_DATA_PATHS:
+		var data = _load_actor_data(path)
+		if data != null:
+			var actor = _create_actor_from_data(data)
+			if actor != null:
+				party.append(actor)
+		else:
+			push_warning("Missing actor data resource: " + path)
+	if party.is_empty():
+		push_warning("Actor data not found. Falling back to legacy party data.")
+		for entry in LEGACY_PARTY_DATA:
+			party.append(_make_character(entry))
 
-	var enemies: Array = [
-		_make_boss({
-			"id": "marcus_gelt",
-			"display_name": "Marcus Gelt",
-			"stats": {"hp_max": 1200, "mp_max": 0, "atk": 75, "def": 55, "mag": 35, "spd": 38},
-			"phase": 1,
-			"position": BattleRenderer.BOSS_POSITION,
-			"color": Color.BLACK
-		})
-	]
+	var enemies: Array = []
+	for path in BOSS_DATA_PATHS:
+		var data = _load_actor_data(path)
+		if data != null:
+			var enemy = _create_actor_from_data(data)
+			if enemy != null:
+				enemies.append(enemy)
+		else:
+			push_warning("Missing boss data resource: " + path)
+	if enemies.is_empty():
+		push_warning("Boss data not found. Falling back to legacy boss data.")
+		for entry in LEGACY_BOSS_DATA:
+			enemies.append(_make_boss(entry))
+
+	push_warning("Battle load complete. Party: " + str(party.size()) + " Enemies: " + str(enemies.size()))
 
 	# Copy renderer dictionaries for backward compatibility
 	actor_sprites = renderer.actor_sprites
@@ -181,7 +223,7 @@ func _ready() -> void:
 
 	battle_manager.setup_state(party, enemies)
 	battle_manager.start_round()
-	var order = battle_manager.battle_state.get("turn_order", [])
+	var order = _dict_get(battle_manager.battle_state, "turn_order", [])
 	_on_turn_order_updated(order) # Force UI update
 	_start_global_idle_all()
 	
@@ -198,7 +240,7 @@ func _ready() -> void:
 
 func _make_character(data: Dictionary) -> Character:
 	var character = renderer.create_character(data)
-	var actor_id = data.get("id", "")
+	var actor_id = _dict_get(data, "id", "")
 	character.status_added.connect(func (status_id):
 		_on_status_added(actor_id, status_id)
 	)
@@ -213,7 +255,7 @@ func _make_character(data: Dictionary) -> Character:
 
 func _make_boss(data: Dictionary) -> Boss:
 	var boss = renderer.create_boss(data)
-	var actor_id = data.get("id", "")
+	var actor_id = _dict_get(data, "id", "")
 	boss.status_added.connect(func (status_id):
 		_on_status_added(actor_id, status_id)
 	)
@@ -234,6 +276,7 @@ func _on_message_added(text: String) -> void:
 	_update_battle_log()
 
 func _on_turn_order_updated(order: Array) -> void:
+	var _order = order
 	# Update general status label if we want to track it
 	_update_turn_order_visual()
 
@@ -263,22 +306,22 @@ func _on_action_enqueued(_action: Dictionary) -> void:
 
 
 func _on_action_executed(result: Dictionary) -> void:
-	var action_id = result.get("action_id", "")
+	var action_id = _dict_get(result, "action_id", "")
 	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
 		_show_limit_overlay(action_id)
 	
 	# Spawn Floating Text based on result
 	if result.get("ok"):
-		var payload = result.get("payload", {})
-		var target_id = payload.get("target_id", "")
+		var payload = _dict_get(result, "payload", {})
+		var target_id = _dict_get(payload, "target_id", "")
 		var target = battle_manager.get_actor_by_id(target_id)
-		var attacker_id = payload.get("attacker_id", "")
+		var attacker_id = _dict_get(payload, "attacker_id", "")
 		if attacker_id != "":
 			_play_action_whip(attacker_id)
 		
 		# Handle Damage
 		if payload.has("damage_instances"):
-			var instances = payload.get("damage_instances", [])
+			var instances = _dict_get(payload, "damage_instances", [])
 			if target:
 				_spawn_damage_numbers(target_id, instances)
 				_play_hit_shake(target_id)
@@ -304,19 +347,19 @@ func _on_action_executed(result: Dictionary) -> void:
 		if payload.has("buff"):
 			if target: # Self buff usually
 				_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
-			_create_status_indicator(payload.get("attacker_id", payload.get("target_id", "")))
+			_create_status_indicator(_dict_get(payload, "attacker_id", _dict_get(payload, "target_id", "")))
 			pending_status_messages.append("Buff: " + str(payload["buff"]))
 		elif payload.has("debuff"):
 			if target:
 				_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
 				_play_hit_shake(target_id)
-			_create_status_indicator(payload.get("target_id", ""))
+			_create_status_indicator(_dict_get(payload, "target_id", ""))
 			pending_status_messages.append("Debuff: " + str(payload["debuff"]))
 		elif payload.has("stun_applied") and payload["stun_applied"]:
 			if target:
 				_create_floating_text(target.position, "STUNNED", Color.YELLOW)
 				_play_hit_shake(target_id)
-			_create_status_indicator(payload.get("target_id", ""))
+			_create_status_indicator(_dict_get(payload, "target_id", ""))
 			pending_status_messages.append("Status: STUN")
 				
 	# Pass to log logic...
@@ -380,10 +423,10 @@ func _compact_order(order: Array) -> String:
 func _process_turn_loop() -> void:
 	if battle_over:
 		return
-	if battle_manager.battle_state.get("turn_order", []).is_empty():
+	if _dict_get(battle_manager.battle_state, "turn_order", []).is_empty():
 		return
 
-	var actor_id = battle_manager.battle_state.get("active_character_id", "")
+	var actor_id = _dict_get(battle_manager.battle_state, "active_character_id", "")
 	var actor = battle_manager.get_actor_by_id(actor_id)
 	
 	if actor == null or actor.is_ko():
@@ -456,7 +499,7 @@ func _on_menu_action_selected(action_id: String) -> void:
 		return
 	battle_menu.visible = not is_metamagic
 	var template_action = ActionFactory.create_action(action_id, active_player_id, [])
-	var tags = template_action.get("tags", [])
+	var tags = _dict_get(template_action, "tags", [])
 	var target_mode = _determine_target_mode(tags)
 	var target_pool = _determine_target_pool(tags, action_id)
 	if target_mode == "SINGLE":
@@ -536,7 +579,7 @@ func _determine_target_mode(tags: Array) -> String:
 	return "SINGLE"
 
 
-func _determine_target_pool(tags: Array, action_id: String) -> Array:
+func _determine_target_pool(tags: Array, _action_id: String) -> Array:
 	if tags.has(ActionTags.ALL_ALLIES) or tags.has(ActionTags.BUFF) or tags.has(ActionTags.HEALING) or tags.has(ActionTags.SELF):
 		return battle_manager.battle_state.party
 	if tags.has(ActionTags.ALL_ENEMIES) or tags.has(ActionTags.PHYSICAL) or tags.has(ActionTags.MAGICAL):
@@ -575,18 +618,18 @@ func _create_status_indicator(actor_id: String) -> void:
 func _update_menu_disables(actor: Character) -> void:
 	var disabled: Dictionary = {}
 	for item in battle_menu.menu_items:
-		var id = item.get("id", "")
+		var id = _dict_get(item, "id", "")
 		if id == "ATTACK" or id == "SKILL_SUB" or id == "ITEM_SUB" or id == "META_SUB" or id == "DEFEND" or id == "GUARD_TOGGLE":
 			if actor.id == "ludwig" and actor.has_status(StatusEffectIds.GUARD_STANCE) and id == "ATTACK":
 				disabled[id] = "Guard Stance active."
 			continue
 		var action = ActionFactory.create_action(id, actor.id, [])
-		if action.get("resource_type", "") != "":
-			var cost = action.get("resource_cost", 0)
+		if _dict_get(action, "resource_type", "") != "":
+			var cost = _dict_get(action, "resource_cost", 0)
 			if actor.get_resource_current(action.resource_type) < cost:
 				disabled[id] = "Not enough " + action.resource_type.capitalize() + "."
 				continue
-		var mp_cost = action.get("mp_cost", 0)
+		var mp_cost = _dict_get(action, "mp_cost", 0)
 		if mp_cost > 0 and actor.mp_current < mp_cost:
 			disabled[id] = "Not enough MP."
 			continue
@@ -597,7 +640,7 @@ func _update_menu_disables(actor: Character) -> void:
 			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
 				disabled[id] = "Guard Stance active."
 				continue
-		var tags = action.get("tags", [])
+		var tags = _dict_get(action, "tags", [])
 		var pool = _determine_target_pool(tags, id)
 		if not tags.has(ActionTags.SELF) and pool.is_empty():
 			disabled[id] = "No valid targets."
@@ -606,14 +649,14 @@ func _update_menu_disables(actor: Character) -> void:
 
 func _execute_next_action() -> void:
 	var result = battle_manager.process_next_action()
-	var payload = result.get("payload", result)
+	var payload = _dict_get(result, "payload", result)
 	message_log("Action Result: " + str(payload))
-	if result.get("ok") == false:
+	if _dict_get(result, "ok", false) == false:
 		input_locked = false
-	if payload.get("metamagic", "") != "":
+	if _dict_get(payload, "metamagic", "") != "":
 		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
 		if actor_meta:
-			message_log("Metamagic set: " + str(payload.get("metamagic", "")))
+			message_log("Metamagic set: " + str(_dict_get(payload, "metamagic", "")))
 			input_locked = false
 			battle_menu.visible = true
 			battle_menu.open_magic_submenu()
@@ -622,9 +665,9 @@ func _execute_next_action() -> void:
 	
 	# End of turn cleanup
 	var actor = battle_manager.get_actor_by_id(active_player_id)
-	if actor and not payload.get("quicken", false):
+	if actor and not _dict_get(payload, "quicken", false):
 		battle_manager.process_end_of_turn_effects(actor)
-	if payload.get("quicken", false) and actor and actor.id == "catraca":
+	if _dict_get(payload, "quicken", false) and actor and actor.id == "catraca":
 		message_log("Quicken: extra action!")
 		input_locked = false
 		battle_menu.setup(actor)
@@ -661,6 +704,57 @@ func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionar
 	return ActionFactory.create_action(id, actor, targets)
 
 
+func _load_actor_data(path: String) -> Resource:
+	var data = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	if data == null:
+		var abs_path = ProjectSettings.globalize_path(path)
+		if FileAccess.file_exists(abs_path):
+			push_warning("Actor data file exists but failed to load: " + path)
+		return null
+	if data.get_script() == ActorDataScript:
+		return data
+	var raw = DataCloneUtil.resource_to_dict(data)
+	if _dict_get(raw, "id", "") != "":
+		return data
+	return null
+
+
+func _actor_data_to_dict(data: Resource) -> Dictionary:
+	var raw = DataCloneUtil.resource_to_dict(data)
+	var position = _dict_get(raw, "position", Vector2.ZERO)
+	if position == Vector2.ZERO:
+		var data_id = _dict_get(raw, "id", "")
+		if renderer.HERO_POSITIONS.has(data_id):
+			position = renderer.HERO_POSITIONS[data_id]
+		elif _dict_get(raw, "is_boss", false):
+			position = renderer.BOSS_POSITION
+	return {
+		"id": _dict_get(raw, "id", ""),
+		"display_name": _dict_get(raw, "display_name", ""),
+		"stats": DataCloneUtil.dict(_dict_get(raw, "stats", {})),
+		"resources": DataCloneUtil.dict(_dict_get(raw, "resources", {})),
+		"position": position,
+		"color": _dict_get(raw, "color", Color.WHITE),
+		"phase": _dict_get(raw, "phase", 1)
+	}
+
+
+func _create_actor_from_data(data: Resource) -> Node:
+	var dict = _actor_data_to_dict(data)
+	if _dict_get(dict, "id", "") == "":
+		return null
+	var raw = DataCloneUtil.resource_to_dict(data)
+	if _dict_get(raw, "is_boss", false):
+		return _make_boss(dict)
+	return _make_character(dict)
+
+
+func _dict_get(dict: Dictionary, key: Variant, fallback: Variant) -> Variant:
+	if dict.has(key):
+		return dict[key]
+	return fallback
+
+
 
 func _update_status_label(lines: Array) -> void:
 	# Update both debug log and game UI
@@ -673,7 +767,7 @@ func _update_status_label(lines: Array) -> void:
 		for child in party_status_panel.get_children():
 			child.queue_free()
 		
-		var active_id = battle_manager.battle_state.get("active_character_id", "")
+		var active_id = _dict_get(battle_manager.battle_state, "active_character_id", "")
 		# Rebuild party list
 		for actor in battle_manager.battle_state.party:
 			var hbox = HBoxContainer.new()
@@ -808,7 +902,7 @@ func _update_status_label(lines: Array) -> void:
 func _update_battle_log() -> void:
 	if battle_log_panel == null:
 		return
-	var lines = battle_manager.battle_state.get("message_log", [])
+	var lines = _dict_get(battle_manager.battle_state, "message_log", [])
 	var start = max(0, lines.size() - 6)
 	var combined = lines.slice(start, lines.size())
 	if pending_damage_messages.size() > 0:
@@ -829,13 +923,13 @@ func _update_battle_log() -> void:
 
 
 func _get_turn_header() -> String:
-	var turn_id = str(battle_manager.battle_state.get("turn_count", 0)) + ":" + \
-		str(battle_manager.battle_state.get("active_character_id", ""))
+	var turn_id = str(_dict_get(battle_manager.battle_state, "turn_count", 0)) + ":" + \
+		str(_dict_get(battle_manager.battle_state, "active_character_id", ""))
 	if turn_id == last_logged_turn_id:
 		return ""
 	last_logged_turn_id = turn_id
-	return "---- Turn " + str(battle_manager.battle_state.get("turn_count", 0)) + \
-		" (" + str(battle_manager.battle_state.get("active_character_id", "")) + ") ----"
+	return "---- Turn " + str(_dict_get(battle_manager.battle_state, "turn_count", 0)) + \
+		" (" + str(_dict_get(battle_manager.battle_state, "active_character_id", "")) + ") ----"
 
 
 func _update_status_effects_text() -> void:

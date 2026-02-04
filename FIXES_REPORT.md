@@ -152,14 +152,113 @@ Extracted ~250 lines of visual creation logic from `battle_scene.gd`:
 - Position constants (HERO_POSITIONS, BOSS_POSITION)
 - Actor dictionary management (sprites, nodes, positions, modulates)
 
-### Phase 4-8: Remaining (Reprioritized)
+### Phase 6: ActionResolver (COMPLETE)
+**File:** [action_resolver.gd](scripts/battle/action_resolver.gd)
+
+Extracted ~450 lines of action resolution logic from `battle_manager.gd`:
+- `_resolve_action` action switch and outcome results
+- `execute_basic_attack` and `_try_riposte`
+- `_apply_damage_with_limit` (limit gain + phase transition hookup)
+- `BattleManager` now delegates via thin wrappers
+
+### Phase 7: TurnManager + StatusProcessor (COMPLETE)
+**Files:** [turn_manager.gd](scripts/battle/turn_manager.gd), [status_processor.gd](scripts/battle/status_processor.gd)
+
+Extracted ~220 lines from `battle_manager.gd`:
+- Turn order calculation and round flow (`calculate_turn_order`, `start_round`, `advance_turn`)
+- End-of-turn status ticking and expiration (`process_end_of_turn_effects`)
+- `BattleManager` delegates to new managers via thin wrappers
+
+### Phase 4: Character Data Resources (COMPLETE)
+**Files:** [actor_data.gd](scripts/resources/actor_data.gd), `data/actors/*.tres`
+
+Converted party/boss stats into data resources:
+- Added `ActorData` resource schema
+- Added actor resource files for Kairus, Ludwig, Ninos, Catraca, and Marcus
+- `battle_scene.gd` now loads actor resources and builds actors from data
+
+### Phase 5: Action Data Resources (COMPLETE)
+**Files:** [action_data.gd](scripts/resources/action_data.gd), `data/actions/*.tres`
+
+Converted action dictionaries into data resources:
+- Added `ActionData` resource schema
+- Added action resource files for all action ids
+- `ActionFactory` now builds actions from data resources
+
+---
+
+## Post-Refactor Error Analysis (2026-02-03)
+
+### Errors Observed
+- **Parse Error:** `get()` called with 2 args in Godot 4.6 (e.g., `dict.get(key, default)`).
+- **Read-only mutation:** `Character._consume_resource` when mutating dictionaries from `.tres`.
+- **Load failures:** actors not spawning when resource checks rejected data.
+- **Missing helper:** `_get_prop()` referenced after removal.
+
+### Root Causes
+- Godot 4.6 resolves `get()` to `Object.get()` (1-arg) in contexts that look like object calls.
+- `.tres` resource data is immutable; runtime logic must clone before mutation.
+- Refactor introduced helper drift and inconsistent access patterns.
+- Resource validation was overly strict, leading to empty party/enemy arrays.
+
+### Fix Strategy (Elegant + Durable)
+- **Centralize cloning:** `DataClone.resource_to_dict()` and `DataClone.dict/array` for all resource data.
+- **Unified defaults:** use `dict_get()` helpers instead of `Dictionary.get(key, default)`.
+- **Single data ingress:** convert resource → dictionary once, then use only dictionaries in runtime.
+- **Safe fallbacks:** if resource data missing, fallback to legacy data to keep game bootable.
+- **Refactor hygiene:** run a helper-usage sweep after each extraction phase.
+
+### Update: ActorData Resource Load Failures (2026-02-03)
+**Symptoms from logs:**
+- `Cannot get class 'ActorData'`
+- `Parse Error: Can't create sub resource of type 'ActorData'`
+- Load failures for `res://data/actors/*.tres`, followed by legacy fallback.
+
+**What we tried:**
+- Rewrote `.tres` files as UTF-8 (initial PowerShell output was UTF-16).
+- Switched to `ResourceLoader.load(..., CACHE_MODE_IGNORE)` to avoid cache issues.
+- Used `type="ActorData"` in `.tres` (failed due to class resolution errors).
+
+**Current understanding:**
+- Godot expects custom resource classes to load as `type="Resource"` with `script_class="ActorData"` and an `ext_resource` script reference.
+- Using `type="ActorData"` requires the class to be registered globally before load, which is failing here.
+
+**Previous fix attempted:**
+- Rewrote actor `.tres` files as **UTF-8** with:
+  - `type="Resource"`
+  - `script_class="ActorData"`
+  - `ext_resource` pointing to `res://scripts/resources/actor_data.gd`
+
+### Resolution: Missing Script Assignment (2026-02-03) ✅ FIXED
+
+**Root Cause Identified:**
+The `.tres` files were missing the critical `script = ExtResource("1")` property in the `[resource]` section. While the header contained `script_class="ActorData"` and the `ext_resource` was defined, the actual script binding was never applied to the resource instance.
+
+**Incorrect format (before):**
+```
+[resource]
+id = "kairus"
+...
+```
+
+**Correct format (after):**
+```
+[resource]
+script = ExtResource("1")
+id = "kairus"
+...
+```
+
+**Fix Applied:**
+- Added `script = ExtResource("1")` to all 5 actor `.tres` files
+- Added `script = ExtResource("1")` to all 30 action `.tres` files
+
+**Result:** Resources now load with correct script binding. `data.get_script() == ActorDataScript` returns `true`, enabling proper typed resource access without legacy fallback.
+
+### Phase 8: Remaining (Reprioritized)
 
 | Priority | Phase | Component | Notes |
 |----------|-------|-----------|-------|
-| HIGH | 6 | ActionResolver | ~450 lines from battle_manager.gd |
-| HIGH | 7 | TurnManager + StatusProcessor | ~220 lines, completes battle_manager split |
-| MEDIUM | 4 | Character Data Resources | Data-driven design (.tres files) |
-| MEDIUM | 5 | Action Data Resources | 34 action .tres files |
 | LOW | 8 | Boss AI Resources | Phase/rotation config in .tres |
 
 ---
@@ -196,6 +295,13 @@ The following items require additional architectural work:
 | action_factory.gd | Removed unused function, fixed typo reference |
 | action_ids.gd | Removed unused constants, fixed typo |
 | target_cursor.gd | Removed print statements |
+| **actor_data.gd** | **NEW** - Actor data resource schema |
+| **action_data.gd** | **NEW** - Action data resource schema |
+| **data/actors/*.tres** | **NEW** - Actor data resources |
+| **data/actions/*.tres** | **NEW** - Action data resources |
+| **action_resolver.gd** | **NEW** - Action resolution extracted from battle_manager.gd |
+| **turn_manager.gd** | **NEW** - Turn order and round flow extracted from battle_manager.gd |
+| **status_processor.gd** | **NEW** - End-of-turn status processing extracted from battle_manager.gd |
 | **battle_animation_controller.gd** | **NEW** - Animation logic extracted from battle_scene.gd |
 | **battle_ui_manager.gd** | **NEW** - UI logic extracted from battle_scene.gd |
 | **battle_renderer.gd** | **NEW** - Visual creation logic extracted from battle_scene.gd |

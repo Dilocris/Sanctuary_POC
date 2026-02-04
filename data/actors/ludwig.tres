@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ActorData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/actor_data.gd" id=1]
+
+[resource]
+script = ExtResource("1")
+id = "ludwig"
+display_name = "Ludwig"
+stats = {"hp_max": 580, "mp_max": 40, "atk": 58, "def": 65, "mag": 22, "spd": 34}
+resources = {"superiority_dice": {"current": 4, "max": 4}}
+position = Vector2(607, 250)
+color = Color(0.5, 0.5, 0.5, 1)
+is_boss = false
+phase = 1

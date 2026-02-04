@@ -21,7 +21,6 @@ var _shake_tweens: Dictionary = {}
 var _flash_tweens: Dictionary = {}
 var _poison_tweens: Dictionary = {}
 var _last_hit_at: Dictionary = {}
-var _global_idle_tweens: Dictionary = {}
 var _global_idle_tokens: Dictionary = {}
 
 

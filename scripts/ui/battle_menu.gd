@@ -2,6 +2,7 @@ extends Control
 class_name BattleMenu
 
 signal action_selected(action_id: String)
+@warning_ignore("unused_signal")
 signal menu_canceled
 signal action_blocked(reason: String)
 signal menu_changed(menu_items: Array)

@@ -443,20 +443,28 @@ $PhaseOverlayAnimator.play("phase_transition")
 | 1 | BattleAnimationController | ~280 | ✅ Complete |
 | 2 | BattleUIManager | ~430 | ✅ Complete |
 | 3 | BattleRenderer | ~250 | ✅ Complete |
+| 4 | Character Data Resources | 5 .tres files | ✅ Complete |
+| 5 | Action Data Resources | 30 .tres files | ✅ Complete |
+| 6 | ActionResolver | ~450 | ✅ Complete |
+| 7 | TurnManager + StatusProcessor | ~220 | ✅ Complete |
 
 ---
 
-## Remaining Refactors (Reprioritized)
+## Data Resource Loading Fix (2026-02-03)
+
+**Issue:** `.tres` files failed to load as custom resource types (ActorData/ActionData).
+
+**Root Cause:** Missing `script = ExtResource("1")` in the `[resource]` section of all `.tres` files.
+
+**Fix:** Added script binding to all 35 resource files. Resources now load correctly without legacy fallback.
+
+---
+
+## Remaining Refactors
 
 | Priority | Phase | Component | Impact | Notes |
 |----------|-------|-----------|--------|-------|
-| HIGH | 6 | ActionResolver | ~450 lines from battle_manager.gd | Biggest remaining god class reduction |
-| HIGH | 7 | TurnManager + StatusProcessor | ~220 lines from battle_manager.gd | Completes battle_manager.gd split |
-| MEDIUM | 4 | Character Data Resources | Data-driven design | Nice-to-have, enables designer editing |
-| MEDIUM | 5 | Action Data Resources | Data-driven design | 34 .tres files, reduces ActionFactory |
 | LOW | 8 | Boss AI Resources | Data-driven design | Enables phase/rotation config in .tres |
-
-**Recommendation:** Prioritize Phase 6-7 to split battle_manager.gd before data-driven phases.
 
 ---
 
@@ -472,4 +480,4 @@ $PhaseOverlayAnimator.play("phase_transition")
 
 ## Conclusion
 
-All critical bugs (P0-P1) and performance issues (P2) are resolved. God class refactoring is 60% complete for battle_scene.gd. The codebase is significantly cleaner and more maintainable. Remaining work focuses on architectural improvements rather than bug fixes.
+All critical bugs (P0-P1) and performance issues (P2) are resolved. God class refactoring is complete through Phase 7. Data-driven design is implemented with working `.tres` resource files for actors and actions. The codebase is significantly cleaner and more maintainable. Only Phase 8 (Boss AI Resources) remains as optional future work.

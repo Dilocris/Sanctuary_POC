@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ActorData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/actor_data.gd" id=1]
+
+[resource]
+script = ExtResource("1")
+id = "ninos"
+display_name = "Ninos"
+stats = {"hp_max": 420, "mp_max": 110, "atk": 38, "def": 35, "mag": 52, "spd": 42}
+resources = {"bardic_inspiration": {"current": 4, "max": 4}}
+position = Vector2(802, 208)
+color = Color(0, 1, 0, 1)
+is_boss = false
+phase = 1

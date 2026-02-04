@@ -1,6 +1,8 @@
 extends Node2D
 class_name Character
 
+const DataCloneUtil = preload("res://scripts/utils/data_clone.gd")
+
 signal hp_changed(current: int, max: int)
 signal mp_changed(current: int, max: int)
 signal resource_changed(resource_type: String, current: int, max: int)
@@ -32,12 +34,12 @@ const LIMIT_GAUGE_MAX := 100
 func setup(data: Dictionary) -> void:
 	id = data.get("id", id)
 	display_name = data.get("display_name", display_name)
-	stats = _merge_stats(data.get("stats", {}))
+	stats = _merge_stats(DataCloneUtil.dict(data.get("stats", {})))
 
 	hp_current = data.get("hp_current", stats["hp_max"])
 	mp_current = data.get("mp_current", stats["mp_max"])
-	resources = data.get("resources", resources)
-	status_effects = data.get("status_effects", status_effects)
+	resources = DataCloneUtil.dict(data.get("resources", resources))
+	status_effects = DataCloneUtil.array(data.get("status_effects", status_effects))
 	limit_gauge = data.get("limit_gauge", limit_gauge)
 
 	_emit_all_resources()
@@ -166,6 +168,8 @@ func _merge_stats(overrides: Dictionary) -> Dictionary:
 	for key in overrides.keys():
 		merged[key] = overrides[key]
 	return merged
+
+
 
 
 func _emit_core_stats() -> void:
