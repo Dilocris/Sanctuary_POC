@@ -108,6 +108,7 @@ var ai_controller: AiController
 var animation_controller: BattleAnimationController
 var ui_manager: BattleUIManager
 var renderer: BattleRenderer
+var game_feel_controller: GameFeelController
 
 
 func _ready() -> void:
@@ -143,6 +144,10 @@ func _ready() -> void:
 	renderer = BattleRenderer.new()
 	renderer.setup(self)
 	renderer.create_background()
+
+	# Setup Game Feel Controller
+	game_feel_controller = GameFeelController.new()
+	game_feel_controller.setup(self, battle_manager)
 
 	# Instantiate UI
 	battle_menu = BattleMenuScene.instantiate()
@@ -309,6 +314,7 @@ func _on_action_executed(result: Dictionary) -> void:
 	var action_id = _dict_get(result, "action_id", "")
 	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
 		_show_limit_overlay(action_id)
+		game_feel_controller.on_limit_break()
 	
 	# Spawn Floating Text based on result
 	if result.get("ok"):
@@ -325,6 +331,12 @@ func _on_action_executed(result: Dictionary) -> void:
 			if target:
 				_spawn_damage_numbers(target_id, instances)
 				_play_hit_shake(target_id)
+				# Game feel effects for multi-hit damage
+				var total_dmg = 0
+				for hit in instances:
+					total_dmg += int(hit)
+				var target_sprite = actor_sprites.get(target_id, null)
+				game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
 			var total_instances = 0
 			for hit in instances:
 				total_instances += int(hit)
@@ -334,6 +346,9 @@ func _on_action_executed(result: Dictionary) -> void:
 			if target:
 				_spawn_damage_numbers(target_id, [dmg])
 				_play_hit_shake(target_id)
+				# Game feel effects for single damage
+				var target_sprite = actor_sprites.get(target_id, null)
+				game_feel_controller.on_damage_dealt(dmg, target_sprite)
 			pending_damage_messages.append("Damage: " + str(dmg))
 				
 		# Handle Healing
@@ -372,6 +387,8 @@ func _on_battle_ended(result: String) -> void:
 	# Clean up all tweens on battle end
 	for actor_id in actor_sprites.keys():
 		_cleanup_actor_tweens(actor_id)
+	# Clean up game feel effects
+	game_feel_controller.cleanup()
 
 func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
 	var actor = battle_manager.get_actor_by_id(actor_id)
@@ -385,6 +402,7 @@ func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
 func _on_phase_changed(phase: int) -> void:
 	input_locked = true
 	battle_menu.set_enabled(false)
+	game_feel_controller.on_phase_transition()
 	_show_phase_overlay(phase)
 
 func _show_phase_overlay(phase: int) -> void:

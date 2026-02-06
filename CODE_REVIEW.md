@@ -1,3 +1,23 @@
+<!--
+DOC_ID: CODE_REVIEW
+STATUS: ACTIVE - Reference Only (Frozen)
+LAST_UPDATED: 2026-02-03
+SUPERSEDES: None
+SUPERSEDED_BY: None
+
+LLM USAGE INSTRUCTIONS:
+- This document contains the completed code review findings.
+- READ SELECTIVELY: Jump to specific sections using the index below.
+- Skip "Good Practices" and "Godot-Specific Recommendations" unless asked about patterns.
+- For current fix status, see FIXES_REPORT.md instead.
+- For implementation context, see docs/AGENT_SWAP.md.
+
+QUICK REFERENCE:
+- Critical bugs: Sections 1-5 (all FIXED)
+- God class refactoring: Section "God Class Refactoring Progress"
+- Status: Section "Status: Completed Fixes"
+-->
+
 # Sanctuary POC - Comprehensive Code Review
 
 **Date:** 2026-02-03

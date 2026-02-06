@@ -1,3 +1,34 @@
+<!--
+DOC_ID: AGENT_SWAP
+STATUS: ACTIVE - Primary handoff document + work log
+LAST_UPDATED: 2026-02-04
+SUPERSEDES: archive/PHASE_3_REFINEMENTS.md, archive/IMPLEMENTATION_PLAN_PHASE_4.md
+SUPERSEDED_BY: None
+
+PURPOSE:
+1. HANDOFF: Provide context when swapping between LLM agents
+2. WORK LOG: Track session-by-session changes and decisions
+
+LLM USAGE INSTRUCTIONS:
+- THIS IS THE PRIMARY HANDOFF DOCUMENT. Read this first for context.
+- READ FROM BOTTOM UP for most recent session notes.
+- Each session has Sign-in (acknowledgements) and Sign-off (summary).
+- For pending work, see ROADMAP.md.
+- For high-level feature list, see PROJECT_HANDOFF.md.
+- For code review details, see CODE_REVIEW.md and FIXES_REPORT.md.
+
+QUICK REFERENCE:
+- Most recent session: Scroll to bottom (latest sign-in/sign-off)
+- Bug fix summary: "Code Review & Refactor Handoff" section
+- Runtime errors: "Notes: Runtime Errors & Root Causes" section
+- Resource loading fix: "Resolution: Missing Script Assignment" section
+
+ADDING A NEW SESSION:
+1. Add "# Sign-in (DATE)" with agent name and acknowledgements
+2. Document work done during session
+3. Add "# Sign-off (DATE)" with summary and next steps
+-->
+
 # Agent Swap Notes (Short Handoff)
 
 Date: 2026-02-03

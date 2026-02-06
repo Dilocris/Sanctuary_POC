@@ -1,3 +1,34 @@
+<!--
+DOC_ID: BATTLE_SYSTEM_GDD
+STATUS: ACTIVE - Master design reference (may have implementation divergences)
+LAST_UPDATED: Original design (pre-implementation)
+SUPERSEDES: None
+SUPERSEDED_BY: None
+
+LLM USAGE INSTRUCTIONS:
+- This is the MASTER DESIGN DOCUMENT. Use as reference for intended behavior.
+- WARNING: Implementation may diverge from this doc in some areas.
+- Known divergences documented in docs/DOCUMENTATION_CONFLICTS.md.
+- For current implementation status, see docs/AGENT_SWAP.md.
+
+QUICK REFERENCE (by section number):
+- Turn system: Section 2.1
+- Damage formulas: Section 2.3
+- Status effects: Section 2.5
+- Party characters: Sections 3.1-3.4 (Kairus, Ludwig, Ninos, Catraca)
+- Boss (Marcus Gelt): Section 4
+- UI specs: Section 5
+- Battle flow: Section 6
+- Asset requirements: Section 7
+- Technical notes: Section 8
+- Balance tuning: Section 9
+
+SKIP SECTIONS for quick context:
+- Section 7 (Asset Requirements) - Art/audio specs
+- Section 10 (Future Expansion) - Not implemented
+- Section 11 (Glossary) - Only if unfamiliar with terms
+-->
+
 Tales of Sanctuary - Battle System Design Document
 BR-006: Marcus Gelt Boss Battle (SNES FF4 Style)
 
@@ -2344,5 +2375,48 @@ DEF_UP: Increase defense stat
 GUARD_STANCE: Ludwig's defensive stance
 FIRE_IMBUE: Kairus's fire enhancement
 
+
+---
+
+## 12. IMPLEMENTATION NOTES
+
+_This section documents known divergences between this design document and the actual implementation. Updated as implementation evolves._
+
+**Last Updated:** 2026-02-04
+
+### 12.1 Implemented Divergences
+
+| GDD Section | Design | Implementation | Reason |
+|-------------|--------|----------------|--------|
+| 3.4.3 Catraca Attack | Weak physical attack / Defend | **Fire Bolt** (0 MP cantrip) | Attack was never useful; Fire Bolt gives Catraca a meaningful free action |
+| 2.5 Bless Duration | Not specified in status list | **2 turns** | Balanced for typical combat length |
+| 2.5 Mage Armor Duration | "Until battle ends" | **3 turns** (DEF buff) | Simplified to standard buff duration |
+| 3.3 Bardic Inspiration | +1d8 to next attack | **Placeholder** - consumes resource only | Needs Reaction/Modifier system (see ROADMAP) |
+
+### 12.2 Not Yet Implemented
+
+| GDD Section | Feature | Status | Notes |
+|-------------|---------|--------|-------|
+| 2.2 Physical Evasion | Base 5% + Patient Defense 15% | NOT IMPLEMENTED | Precision Strike "ignore evasion" has no effect |
+| 3.1.4 Patient Defense | 15% evasion passive | NOT IMPLEMENTED | Depends on evasion system |
+| 3.3.4 Counterspell Sense | 30% auto-cancel enemy spell | NOT IMPLEMENTED | Needs reaction system |
+| 6.4 Rewards Screen | EXP, Gil, Items | NOT IMPLEMENTED | Battle ends at victory, no rewards |
+| 10.2 Difficulty Modes | Easy/Hard HP adjustments | NOT IMPLEMENTED | Single difficulty only |
+
+### 12.3 Implementation Enhancements (Beyond GDD)
+
+| Feature | Description | Added In |
+|---------|-------------|----------|
+| Enemy Intent Telegraph | 2s preview of boss action | Phase 4 |
+| Limit Gauge Accrual | Gains on damage dealt AND taken | Phase 4 |
+| DOT/HOT Floating Numbers | Visual feedback for tick damage | Phase 4 |
+| Poison Visual Tint | Green oscillation while poisoned | Phase 4 |
+| Phase Transition Turn Reset | Party acts before boss after phase change | Phase 4 |
+
+### 12.4 Balance Adjustments
+
+_No significant balance changes from GDD values yet. Damage formulas match Section 2.3._
+
+---
 
 END OF DESIGN DOCUMENT

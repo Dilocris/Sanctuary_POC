@@ -1,3 +1,24 @@
+<!--
+DOC_ID: PROJECT_HANDOFF
+STATUS: ACTIVE - High-level status snapshot
+LAST_UPDATED: 2026-02-04
+SUPERSEDES: archive/PHASE_3_REFINEMENTS.md, archive/IMPLEMENTATION_PLAN_PHASE_4.md
+SUPERSEDED_BY: None
+
+LLM USAGE INSTRUCTIONS:
+- This document provides a HIGH-LEVEL feature summary (what's done).
+- For PENDING WORK, see ROADMAP.md.
+- For session-by-session notes, see AGENT_SWAP.md.
+- READ Section 1 for completed features.
+- SKIP Section 2 (file manifest) unless investigating specific files.
+
+QUICK REFERENCE:
+- Completed features: Section 1
+- File manifest: Section 2
+- How to run: Section 3
+- Pending work: See ROADMAP.md
+-->
+
 # Project Handoff - Agent Swap Complete
 
 ## Date: 2026-02-03
@@ -50,43 +71,11 @@
 - `scenes/ui/target_cursor.tscn` + `scripts/ui/target_cursor.gd`: Target selection cursor.
 - `docs/IMPLEMENTATION_PLAN_PHASE_4.md`: Menu/targeting plan.
 
-### 3. Known Issues / Next Steps
-- **Status/Stance Validation**: Verify Imbue, Mage Armor, Guard Stance (and similar) are applying/visible consistently.
-- **Guard Stance**: Implemented DEF * 1.5, damage taken * 0.5, action restrictions, and Riposte counter.
-- **Status Effects**: ATK_DOWN now reduces attacker ATK; Mage Armor increases DEF in damage calculations.
-- **Targeting Reticule**: Now anchors to each actor’s Visual node to avoid stale positions.
-- **Target Reticule Attachment**: Reticule should attach to sprite nodes (avoid stale positions).
-- **Bottom UI Placement**: Push bottom UI closer to the bottom edge of the viewport.
-- **Catraca Mage Armor**: In the latest smoke test, Mage Armor status didn't appear on the UI. Verify if it was cast (logic checks `if not has_status`).
-- **AoE Tweaks**: Fireball currently hits specific target list; need to implement true targeting selection UI in Phase 4.
-- **Inspiration Logic**: Currently just logs consumption; needs hook into `AttackResult` calculation for the *next* attack.
-- **Menu-Driven Flow**: Battle loop now depends on menu selection. Ensure input mapping exists for `ui_up/down/left/right/accept/cancel`.
-- **Metamagic**: Quicken/Twin selection is wired; Twin targeting UI and Quicken second-action guardrails need refinement.
-- **Limit Gauge**: Limit bar is visible; limit breaks are now fully wired and executable.
-- **Resource Gating**: Menu now disables actions when resources are insufficient and shows a reason on selection.
-- **Twin Targeting**: Added DOUBLE-target selection mode for pending Twin Spell (requires 2 targets).
-- **Visuals**: Character/boss sprites are now scaled (2.0x) and positioned to match the provided reference; background is native 1152x648.
-- **Targeting**: Menu selection now determines target mode/pool from action tags (SELF/SINGLE/ALL_*).
-- **Targeting Feedback**: Target cursor now indicates ALL-target mode and centers over the target group.
-- **Battle Log**: Added an on-screen log panel (top-left, smaller font) showing recent messages plus effect results.
-- **Targeting Rules**: Menu targeting now relies solely on action tags; SELF actions no longer invoke the cursor.
-- **Metamagic**: Catraca now has a Metamagic submenu (Quicken/Twin) that routes into Magic.
-- **Limit Gauge**: Added per-character limit gauge tracking and a small UI bar in the party panel.
-- **Input Lock**: Player input is disabled during enemy turns; target cursor deactivates when not selecting.
-- **Readability**: Increased turn pacing and combat log fade time.
-- **Boss AI (Phase 1)**: Implemented Marcus turn rotation (Greataxe Slam, Tendril Lash, Battle Roar, Collector's Grasp) with pull-target follow-up.
-- **Boss AI Wiring**: Enemy turn now enqueues the AI-selected action directly (not forced to basic attack).
-- **Feedback Tuning**: Adjust sway/whip/shake intensity and damage number spacing if needed.
-- **Multi-hit Messages**: Only Flurry emits per-hit numbers; extend to future multi-hit actions.
-- **Boss Phase 2/3**: Added Dark Regeneration, Symbiotic Rage (double hit), Venom Strike (AoE + poison) and phase change callouts.
-- **Status Durations**: Indefinite/toggle statuses now persist (duration < 0 no longer expires).
-- **Bless**: Now applies +1d4 damage to physical and magical attacks for 2 turns; Mage Armor is 3-turn DEF buff.
-- **Poison Visual**: Added slow oscillating green tint while poisoned.
-- **Enemy Intent**: Telegraph uses player-facing action names; actions now match telegraph.
-- **Fixes**: Removed duplicate boss action factory functions; fixed target cursor outline shader.
-- **Input Lock**: Prevents multi-execution when holding confirm; unlocks on valid transitions.
-- **Phase Transition Order**: Phase change resets turn order so party acts before boss.
-- **DOT/HOT Numbers**: Floating numbers now display for DOT/HOT ticks.
-
-### 4. How to Run
+### 3. How to Run
 Open `scenes/battle/battle_scene.tscn` and run. Watch the output log and the new UI panels.
+
+---
+
+### See Also
+- **[ROADMAP.md](ROADMAP.md)** - Prioritized backlog of pending work
+- **[AGENT_SWAP.md](AGENT_SWAP.md)** - Session-by-session work log and handoff notes

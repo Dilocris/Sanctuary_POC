@@ -1,3 +1,23 @@
+<!--
+DOC_ID: POLISH_PLAN
+STATUS: ACTIVE - Planning document (no code changes)
+LAST_UPDATED: 2026-02-03
+SUPERSEDES: None
+SUPERSEDED_BY: None
+
+LLM USAGE INSTRUCTIONS:
+- This is a PLANNING-ONLY document. No code implementation specs.
+- Contains UX/feedback polish ideas for future implementation.
+- READ SELECTIVELY based on feature of interest.
+- Skip "Modern 2D Pixel RPG Patterns" unless researching design patterns.
+
+QUICK REFERENCE:
+- Yellow health bar spec: Section "Feature: Yellow Health Bar"
+- HP number scroll: Section "Feature: HP Number Scroll"
+- Game feel specs: Section "Design Specifications (Planning)"
+- Open questions: Section "Open Questions"
+-->
+
 # Polish Plan (Planning Only)
 
 Purpose: Capture feel/feedback polish ideas without touching code while the review branch is active.

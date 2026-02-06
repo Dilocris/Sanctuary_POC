@@ -4,6 +4,9 @@ class_name BattleUIManager
 ## BattleUIManager - Manages all UI panels, displays, and overlays for battle
 ## Extracted from battle_scene.gd for single-responsibility design
 
+const AnimatedHealthBarClass = preload("res://scripts/ui/animated_health_bar.gd")
+const ResourceDotGridClass = preload("res://scripts/ui/resource_dot_grid.gd")
+
 signal phase_overlay_finished
 signal limit_overlay_finished
 
@@ -11,12 +14,19 @@ signal limit_overlay_finished
 var _scene_root: Node
 var _battle_manager: BattleManager
 
-# UI Constants
-const LOWER_UI_TOP := 492
+# UI Constants - Moved lower UI closer to bottom edge
+const LOWER_UI_TOP := 520
+const PANEL_PADDING := 8
+const ROW_SPACING := 4
+const COLUMN_SPACING := 8
 const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
-const INACTIVE_NAME_COLOR := Color(1, 1, 1)
-const ACTIVE_NAME_FONT_SIZE := 16
-const INACTIVE_NAME_FONT_SIZE := 13
+const INACTIVE_NAME_COLOR := Color(0.9, 0.9, 0.9)
+const ACTIVE_NAME_FONT_SIZE := 14
+const INACTIVE_NAME_FONT_SIZE := 12
+const BAR_HEIGHT := 14
+const BAR_WIDTH := 100
+const NAME_WIDTH := 70
+const MP_COLOR := Color(0.25, 0.45, 0.85)
 
 # UI Elements
 var debug_panel: Control
@@ -36,6 +46,16 @@ var boss_hp_bar: ProgressBar
 var boss_hp_bar_label: Label
 var boss_hp_fill_style: StyleBoxFlat
 var battle_log_panel: RichTextLabel
+
+# Persistent party UI elements (for animation support)
+var _party_hp_bars: Dictionary = {}       # actor_id -> AnimatedHealthBar
+var _party_mp_bars: Dictionary = {}       # actor_id -> AnimatedHealthBar (blue)
+var _party_name_labels: Dictionary = {}   # actor_id -> Label
+var _party_resource_grids: Dictionary = {} # actor_id -> ResourceDotGrid
+var _party_lb_bars: Dictionary = {}       # actor_id -> ProgressBar
+var _party_lb_texts: Dictionary = {}      # actor_id -> Label
+var _party_lb_fills: Dictionary = {}      # actor_id -> StyleBoxFlat
+var _party_ui_initialized: bool = false
 
 # State
 var last_logged_turn_id: String = ""
@@ -74,24 +94,24 @@ func create_debug_ui() -> void:
 
 
 func create_game_ui() -> void:
-	# Lower UI background
+	# Lower UI background - closer to bottom edge
 	var lower_ui_bg = ColorRect.new()
-	lower_ui_bg.color = Color(0, 0, 0, 0.6)
-	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 24)
-	lower_ui_bg.size = Vector2(1152, 176)
+	lower_ui_bg.color = Color(0, 0, 0, 0.7)
+	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 8)
+	lower_ui_bg.size = Vector2(1152, 136)
 	lower_ui_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scene_root.add_child(lower_ui_bg)
 
-	# Party Status Panel (Bottom Right)
+	# Party Status Panel (Bottom Right) - tighter layout
 	var panel_bg = Panel.new()
-	panel_bg.position = Vector2(620, LOWER_UI_TOP)
-	panel_bg.size = Vector2(520, 140)
+	panel_bg.position = Vector2(580, LOWER_UI_TOP)
+	panel_bg.size = Vector2(560, 120)
 	_scene_root.add_child(panel_bg)
 
 	party_status_panel = VBoxContainer.new()
-	party_status_panel.position = Vector2(12, 12)
-	party_status_panel.size = Vector2(496, 116)
-	party_status_panel.add_theme_constant_override("separation", 6)
+	party_status_panel.position = Vector2(PANEL_PADDING, PANEL_PADDING)
+	party_status_panel.size = Vector2(544, 104)
+	party_status_panel.add_theme_constant_override("separation", ROW_SPACING)
 	panel_bg.add_child(party_status_panel)
 
 	# Turn Order Display (Top Center)
@@ -233,118 +253,194 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 	if party_status_panel == null:
 		return
 
+	var active_id = _battle_manager.battle_state.get("active_character_id", "")
+
+	# First call: create persistent UI elements
+	if not _party_ui_initialized:
+		_create_party_ui(apply_name_style_func)
+		_party_ui_initialized = true
+
+	# Update existing elements with current values
+	for actor in _battle_manager.battle_state.party:
+		var actor_id = actor.id
+
+		# Update name label style (active vs inactive)
+		if _party_name_labels.has(actor_id):
+			apply_name_style_func.call(_party_name_labels[actor_id], actor_id == active_id)
+
+		# Update HP bar (animated)
+		if _party_hp_bars.has(actor_id):
+			_party_hp_bars[actor_id].set_hp(actor.hp_current, actor.stats["hp_max"])
+
+		# Update MP bar (animated)
+		if _party_mp_bars.has(actor_id) and actor.stats["mp_max"] > 0:
+			_party_mp_bars[actor_id].set_hp(actor.mp_current, actor.stats["mp_max"])
+
+		# Update resource grid
+		if _party_resource_grids.has(actor_id):
+			var grid = _party_resource_grids[actor_id]
+			var res_val = _get_actor_resource_current(actor)
+			grid.set_value(res_val)
+
+		# Update LB bar
+		if _party_lb_bars.has(actor_id):
+			_party_lb_bars[actor_id].value = actor.limit_gauge
+			if _party_lb_texts.has(actor_id):
+				_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
+			if _party_lb_fills.has(actor_id):
+				if actor.limit_gauge >= 100:
+					_party_lb_fills[actor_id].bg_color = Color(0.2, 0.6, 1.0)
+				else:
+					_party_lb_fills[actor_id].bg_color = Color(0.4, 0.4, 0.4)
+
+
+## Get the current value of an actor's special resource.
+func _get_actor_resource_current(actor) -> int:
+	if actor.resources.has("ki"):
+		return actor.get_resource_current("ki")
+	if actor.resources.has("superiority_dice"):
+		return actor.get_resource_current("superiority_dice")
+	if actor.resources.has("bardic_inspiration"):
+		return actor.get_resource_current("bardic_inspiration")
+	if actor.resources.has("sorcery_points"):
+		return actor.get_resource_current("sorcery_points")
+	return 0
+
+
+## Get the max value of an actor's special resource.
+func _get_actor_resource_max(actor) -> int:
+	if actor.resources.has("ki"):
+		return actor.resources["ki"].get("max", 0)
+	if actor.resources.has("superiority_dice"):
+		return actor.resources["superiority_dice"].get("max", 0)
+	if actor.resources.has("bardic_inspiration"):
+		return actor.resources["bardic_inspiration"].get("max", 0)
+	if actor.resources.has("sorcery_points"):
+		return actor.resources["sorcery_points"].get("max", 0)
+	return 0
+
+
+## Creates the persistent party UI elements (called once).
+func _create_party_ui(apply_name_style_func: Callable) -> void:
+	# Clear any existing children
 	for child in party_status_panel.get_children():
 		child.queue_free()
 
 	var active_id = _battle_manager.battle_state.get("active_character_id", "")
+
 	for actor in _battle_manager.battle_state.party:
+		var actor_id = actor.id
+
+		# Main row container
 		var hbox = HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 12)
-		hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		hbox.add_theme_constant_override("separation", COLUMN_SPACING)
+		hbox.alignment = BoxContainer.ALIGNMENT_BEGIN
+
+		# Name label (narrower)
 		var name_lbl = Label.new()
 		name_lbl.text = actor.display_name
-		name_lbl.custom_minimum_size = Vector2(96, 0)
-		apply_name_style_func.call(name_lbl, actor.id == active_id)
+		name_lbl.custom_minimum_size = Vector2(NAME_WIDTH, 0)
+		name_lbl.add_theme_font_size_override("font_size", INACTIVE_NAME_FONT_SIZE)
+		apply_name_style_func.call(name_lbl, actor_id == active_id)
+		_party_name_labels[actor_id] = name_lbl
 
-		var hp_container = Control.new()
-		hp_container.custom_minimum_size = Vector2(140, 18)
-		hp_container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var hp_bar = ProgressBar.new()
-		hp_bar.min_value = 0
-		hp_bar.max_value = actor.stats["hp_max"]
-		hp_bar.value = actor.hp_current
-		hp_bar.show_percentage = false
-		hp_bar.size = Vector2(140, 18)
-		var hp_bg = StyleBoxFlat.new()
-		hp_bg.bg_color = Color(0.1, 0.1, 0.1, 0.9)
-		hp_bg.corner_radius_top_left = 8
-		hp_bg.corner_radius_top_right = 8
-		hp_bg.corner_radius_bottom_left = 8
-		hp_bg.corner_radius_bottom_right = 8
-		var hp_fill = StyleBoxFlat.new()
-		hp_fill.bg_color = Color(0.2, 0.8, 0.2)
-		hp_fill.corner_radius_top_left = 8
-		hp_fill.corner_radius_top_right = 8
-		hp_fill.corner_radius_bottom_left = 8
-		hp_fill.corner_radius_bottom_right = 8
-		hp_bar.add_theme_stylebox_override("background", hp_bg)
-		hp_bar.add_theme_stylebox_override("fill", hp_fill)
-		hp_bar.add_theme_stylebox_override("fg", hp_fill)
-		var hp_text = RichTextLabel.new()
-		hp_text.bbcode_enabled = true
-		hp_text.scroll_active = false
-		hp_text.fit_content = true
-		hp_text.text = "[b]%d[/b][font_size=11]/%d[/font_size]" % [actor.hp_current, actor.stats["hp_max"]]
-		hp_text.add_theme_font_size_override("normal_font_size", 13)
-		hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		hp_text.anchor_right = 1.0
-		hp_text.anchor_bottom = 1.0
-		hp_text.offset_left = 0.0
-		hp_text.offset_top = 0.0
-		hp_text.offset_right = 0.0
-		hp_text.offset_bottom = 0.0
-		hp_bar.add_child(hp_text)
-		hp_container.add_child(hp_bar)
+		# Bars container (HP and MP stacked vertically)
+		var bars_vbox = VBoxContainer.new()
+		bars_vbox.add_theme_constant_override("separation", 2)
 
-		var mp_lbl = Label.new()
+		# HP bar (green, animated)
+		var hp_bar = AnimatedHealthBarClass.new()
+		hp_bar.bar_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
+		hp_bar.custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
+		hp_bar.use_odometer = false  # Simpler display for tighter layout
+		hp_bar.corner_radius = 4
+		_party_hp_bars[actor_id] = hp_bar
+		bars_vbox.add_child(hp_bar)
+
+		# MP bar (blue, only if actor has MP)
 		if actor.stats["mp_max"] > 0:
-			mp_lbl.text = "MP:%d/%d" % [actor.mp_current, actor.stats["mp_max"]]
-		else:
-			mp_lbl.text = ""
-		mp_lbl.custom_minimum_size = Vector2(150, 0)
+			var mp_bar = AnimatedHealthBarClass.new()
+			mp_bar.bar_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
+			mp_bar.custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
+			mp_bar.main_color = MP_COLOR
+			mp_bar.use_odometer = false
+			mp_bar.corner_radius = 4
+			_party_mp_bars[actor_id] = mp_bar
+			bars_vbox.add_child(mp_bar)
 
-		if actor.resources.has("ki"):
-			mp_lbl.text += " | Ki:%d" % actor.get_resource_current("ki")
-		if actor.resources.has("superiority_dice"):
-			mp_lbl.text += " | SD:%d" % actor.get_resource_current("superiority_dice")
-		if actor.resources.has("bardic_inspiration"):
-			mp_lbl.text += " | BI:%d" % actor.get_resource_current("bardic_inspiration")
-		if actor.resources.has("sorcery_points"):
-			mp_lbl.text += " | SP:%d" % actor.get_resource_current("sorcery_points")
-		mp_lbl.text += " | LB"
+		# Resource dot grid (special resource)
+		var res_max = _get_actor_resource_max(actor)
+		if res_max > 0:
+			var res_grid = ResourceDotGridClass.new()
+			res_grid.max_value = res_max
+			res_grid.dot_size = 5
+			res_grid.dot_spacing = 2
+			res_grid.row_spacing = 1
+			res_grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_party_resource_grids[actor_id] = res_grid
 
+		# LB bar (compact)
 		var lb_bar = ProgressBar.new()
 		lb_bar.min_value = 0
 		lb_bar.max_value = 100
 		lb_bar.value = actor.limit_gauge
-		lb_bar.custom_minimum_size = Vector2(90, 12)
+		lb_bar.custom_minimum_size = Vector2(60, 10)
 		lb_bar.show_percentage = false
+
 		var lb_bg = StyleBoxFlat.new()
-		lb_bg.bg_color = Color(0.12, 0.12, 0.12, 0.9)
-		lb_bg.corner_radius_top_left = 6
-		lb_bg.corner_radius_top_right = 6
-		lb_bg.corner_radius_bottom_left = 6
-		lb_bg.corner_radius_bottom_right = 6
+		lb_bg.bg_color = Color(0.15, 0.15, 0.15, 0.9)
+		lb_bg.corner_radius_top_left = 4
+		lb_bg.corner_radius_top_right = 4
+		lb_bg.corner_radius_bottom_left = 4
+		lb_bg.corner_radius_bottom_right = 4
+
 		var lb_fill = StyleBoxFlat.new()
-		lb_fill.bg_color = Color(0.5, 0.5, 0.5)
+		lb_fill.bg_color = Color(0.4, 0.4, 0.4)
 		if actor.limit_gauge >= 100:
 			lb_fill.bg_color = Color(0.2, 0.6, 1.0)
-		lb_fill.corner_radius_top_left = 6
-		lb_fill.corner_radius_top_right = 6
-		lb_fill.corner_radius_bottom_left = 6
-		lb_fill.corner_radius_bottom_right = 6
+		lb_fill.corner_radius_top_left = 4
+		lb_fill.corner_radius_top_right = 4
+		lb_fill.corner_radius_bottom_left = 4
+		lb_fill.corner_radius_bottom_right = 4
+
 		lb_bar.add_theme_stylebox_override("background", lb_bg)
 		lb_bar.add_theme_stylebox_override("fill", lb_fill)
 		lb_bar.add_theme_stylebox_override("fg", lb_fill)
+		_party_lb_bars[actor_id] = lb_bar
+		_party_lb_fills[actor_id] = lb_fill
+
 		var lb_text = Label.new()
 		lb_text.text = "%d%%" % actor.limit_gauge
-		lb_text.add_theme_font_size_override("font_size", 11)
+		lb_text.add_theme_font_size_override("font_size", 9)
 		lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lb_text.anchor_right = 1.0
-		lb_text.anchor_bottom = 1.0
-		lb_text.offset_left = 0.0
-		lb_text.offset_top = 0.0
-		lb_text.offset_right = 0.0
-		lb_text.offset_bottom = 0.0
+		lb_text.set_anchors_preset(Control.PRESET_FULL_RECT)
 		lb_bar.add_child(lb_text)
+		_party_lb_texts[actor_id] = lb_text
 
+		# Assemble row: Name | Bars | Resource | LB
 		hbox.add_child(name_lbl)
-		hbox.add_child(hp_container)
-		hbox.add_child(mp_lbl)
+		hbox.add_child(bars_vbox)
+		if _party_resource_grids.has(actor_id):
+			hbox.add_child(_party_resource_grids[actor_id])
 		hbox.add_child(lb_bar)
 		party_status_panel.add_child(hbox)
+
+	# Initialize all bars with current values (no animation on first display)
+	await _scene_root.get_tree().process_frame
+	for actor in _battle_manager.battle_state.party:
+		var actor_id = actor.id
+		# HP bar
+		if _party_hp_bars.has(actor_id):
+			_party_hp_bars[actor_id].initialize(actor.hp_current, actor.stats["hp_max"])
+		# MP bar
+		if _party_mp_bars.has(actor_id):
+			_party_mp_bars[actor_id].initialize(actor.mp_current, actor.stats["mp_max"])
+		# Resource grid
+		if _party_resource_grids.has(actor_id):
+			var res_max = _get_actor_resource_max(actor)
+			var res_cur = _get_actor_resource_current(actor)
+			_party_resource_grids[actor_id].initialize(res_cur, res_max)
 
 
 func update_boss_status() -> void:

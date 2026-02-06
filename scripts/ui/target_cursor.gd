@@ -14,6 +14,13 @@ var original_materials: Dictionary = {}
 var outline_shader: ShaderMaterial
 var current_highlight: Node = null
 
+# Pulse animation settings
+var pulse_enabled: bool = true
+var _pulse_time: float = 0.0
+const PULSE_SPEED: float = 4.0          # Oscillation speed
+const PULSE_MIN: float = 0.7            # Minimum alpha during pulse
+const PULSE_MAX: float = 1.0            # Maximum alpha during pulse
+
 func _ready() -> void:
 	visible = false
 	mode_label = Label.new()
@@ -23,27 +30,78 @@ func _ready() -> void:
 	add_child(mode_label)
 	_outline_setup()
 
+
+func _process(delta: float) -> void:
+	if not is_active or not pulse_enabled:
+		return
+
+	# Update pulse animation
+	_pulse_time += delta * PULSE_SPEED
+	var pulse = (sin(_pulse_time) + 1.0) * 0.5  # 0 to 1
+	var alpha = PULSE_MIN + pulse * (PULSE_MAX - PULSE_MIN)
+
+	# Update shader parameter for highlighted targets
+	_update_highlight_pulse(alpha)
+
+
+func _update_highlight_pulse(alpha: float) -> void:
+	for target in highlighted_targets:
+		_set_shader_pulse(target, alpha)
+	if current_highlight != null and not highlighted_targets.has(current_highlight):
+		_set_shader_pulse(current_highlight, alpha)
+
+
+func _set_shader_pulse(target: Node, alpha: float) -> void:
+	if target == null:
+		return
+	var visual = target.get_node_or_null("Visual")
+	if visual is Sprite2D and visual.material is ShaderMaterial:
+		visual.material.set_shader_parameter("pulse_alpha", alpha)
+
 func _outline_setup() -> void:
 	var shader = Shader.new()
+	# High-contrast dual outline shader with pulsing support
 	shader.code = """
 shader_type canvas_item;
-uniform vec4 outline_color : source_color = vec4(0.95, 0.95, 0.7, 0.6);
-uniform float outline_size = 1.0;
+uniform vec4 outline_color : source_color = vec4(1.0, 1.0, 0.85, 0.95);
+uniform vec4 inner_outline : source_color = vec4(0.0, 0.0, 0.0, 0.5);
+uniform float outline_size = 2.0;
+uniform float pulse_alpha = 1.0;
+
 void fragment(){
 	vec4 base = texture(TEXTURE, UV) * COLOR;
 	if(base.a > 0.0){
 		COLOR = base;
 	} else {
-		float a = 0.0;
+		float outer_a = 0.0;
+		float inner_a = 0.0;
+
+		// Check for outer outline (larger radius)
+		for(int x=-2;x<=2;x++){
+			for(int y=-2;y<=2;y++){
+				if(abs(x) == 2 || abs(y) == 2){
+					vec2 offs = UV + vec2(float(x), float(y)) * outline_size * 0.5 * TEXTURE_PIXEL_SIZE;
+					outer_a = max(outer_a, texture(TEXTURE, offs).a);
+				}
+			}
+		}
+
+		// Check for inner outline (smaller radius)
 		for(int x=-1;x<=1;x++){
 			for(int y=-1;y<=1;y++){
 				vec2 offs = UV + vec2(float(x), float(y)) * outline_size * TEXTURE_PIXEL_SIZE;
-				a = max(a, texture(TEXTURE, offs).a);
+				inner_a = max(inner_a, texture(TEXTURE, offs).a);
 			}
 		}
-		if(a > 0.0){
-			COLOR = outline_color * COLOR.a;
-		}else{
+
+		// Draw dark inner outline first, then bright outer
+		if(inner_a > 0.0 && outer_a == 0.0){
+			// Inner edge - dark outline for contrast
+			COLOR = inner_outline * pulse_alpha;
+		} else if(outer_a > 0.0){
+			// Outer edge - bright glow
+			COLOR = outline_color * pulse_alpha;
+		} else {
 			discard;
 		}
 	}

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(timeout 30 godot:*)",
+      "Bash(echo \"Check completed \\(exit code: $?\")",
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "Bash(for file in *.tres)",
+      "Bash(do sed -i 's/\\\\[resource\\\\]/[resource]\\\\nscript = ExtResource\\(\"\"1\"\"\\)/' \"$file\")",
+      "Bash(done)",
+      "Bash(findstr:*)"
+    ]
+  }
+}
