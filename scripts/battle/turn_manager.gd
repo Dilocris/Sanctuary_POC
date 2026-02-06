@@ -39,6 +39,7 @@ func calculate_turn_order() -> Array:
 
 
 func start_round() -> void:
+	_battle_manager.battle_state.flags["quicken_used_this_round"] = false
 	var order = calculate_turn_order()
 	if order.is_empty():
 		return

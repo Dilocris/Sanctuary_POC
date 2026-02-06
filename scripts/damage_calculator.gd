@@ -1,6 +1,8 @@
 extends RefCounted
 class_name DamageCalculator
 
+static var damage_multiplier: float = 1.0
+
 const BASE_CRIT_CHANCE := 0.05
 const GUARD_STANCE_DEF_MULTIPLIER := 1.5
 const MAGE_ARMOR_DEF_MULTIPLIER := 1.5
@@ -40,6 +42,7 @@ static func calculate_physical_damage(attacker: Node, defender: Node, multiplier
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
 		variance *= GUARD_STANCE_DAMAGE_REDUCTION
 
+	variance *= damage_multiplier
 	return max(1, int(floor(variance)))
 
 

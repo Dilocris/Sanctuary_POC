@@ -15,9 +15,7 @@ var phase_overlay: ColorRect
 var phase_label: Label
 var limit_overlay: ColorRect
 var limit_label: Label
-var boss_hp_bar: ProgressBar
-var boss_hp_bar_label: Label
-var boss_hp_fill_style: StyleBoxFlat
+var boss_hp_bar: AnimatedHealthBar
 var battle_log_panel: RichTextLabel
 var demo_running: bool = false
 var pending_effect_messages: Array = []
@@ -45,6 +43,7 @@ const LOWER_UI_TOP := 492
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
+const SettingsMenuClass = preload("res://scripts/ui/settings_menu.gd")
 const ActorDataScript = preload("res://scripts/resources/actor_data.gd")
 const DataCloneUtil = preload("res://scripts/utils/data_clone.gd")
 const ACTOR_DATA_PATHS := [
@@ -109,6 +108,7 @@ var animation_controller: BattleAnimationController
 var ui_manager: BattleUIManager
 var renderer: BattleRenderer
 var game_feel_controller: GameFeelController
+var settings_menu: Node  # SettingsMenuClass instance
 
 
 func _ready() -> void:
@@ -161,6 +161,11 @@ func _ready() -> void:
 	target_cursor.target_selected.connect(_on_target_selected)
 	target_cursor.selection_canceled.connect(_on_target_canceled)
 
+	# Settings/Debug overlay (F1)
+	settings_menu = SettingsMenuClass.new()
+	settings_menu.setup(self, battle_manager, game_feel_controller, ui_manager)
+	add_child(settings_menu)
+
 	battle_manager.message_added.connect(_on_message_added)
 	battle_manager.turn_order_updated.connect(_on_turn_order_updated)
 	battle_manager.active_character_changed.connect(_on_active_character_changed)
@@ -210,8 +215,7 @@ func _ready() -> void:
 	actor_base_self_modulates = renderer.actor_base_self_modulates
 	actor_root_positions = renderer.actor_root_positions
 	boss_hp_bar = renderer.boss_hp_bar
-	boss_hp_bar_label = renderer.boss_hp_bar_label
-	boss_hp_fill_style = renderer.boss_hp_fill_style
+	ui_manager.set_boss_hp_bar(boss_hp_bar)
 
 	# Setup animation controller with references
 	animation_controller = BattleAnimationController.new()
@@ -227,6 +231,18 @@ func _ready() -> void:
 	)
 
 	battle_manager.setup_state(party, enemies)
+
+	# Initialize boss HP bar with current values (no animation on first display)
+	if boss_hp_bar:
+		var alive_enemies = battle_manager.get_alive_enemies()
+		if alive_enemies.size() > 0:
+			var boss = alive_enemies[0]
+			boss_hp_bar.initialize(boss.hp_current, boss.stats["hp_max"])
+
+	# Populate debug tab now that party data exists
+	if settings_menu:
+		settings_menu.populate_debug_party()
+
 	battle_manager.start_round()
 	var order = _dict_get(battle_manager.battle_state, "turn_order", [])
 	_on_turn_order_updated(order) # Force UI update
@@ -331,12 +347,13 @@ func _on_action_executed(result: Dictionary) -> void:
 			if target:
 				_spawn_damage_numbers(target_id, instances)
 				_play_hit_shake(target_id)
-				# Game feel effects for multi-hit damage
 				var total_dmg = 0
 				for hit in instances:
 					total_dmg += int(hit)
 				var target_sprite = actor_sprites.get(target_id, null)
 				game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
+				if target.is_ko():
+					game_feel_controller.on_finishing_blow(target_sprite)
 			var total_instances = 0
 			for hit in instances:
 				total_instances += int(hit)
@@ -346,9 +363,10 @@ func _on_action_executed(result: Dictionary) -> void:
 			if target:
 				_spawn_damage_numbers(target_id, [dmg])
 				_play_hit_shake(target_id)
-				# Game feel effects for single damage
 				var target_sprite = actor_sprites.get(target_id, null)
 				game_feel_controller.on_damage_dealt(dmg, target_sprite)
+				if target.is_ko():
+					game_feel_controller.on_finishing_blow(target_sprite)
 			pending_damage_messages.append("Damage: " + str(dmg))
 				
 		# Handle Healing
@@ -476,17 +494,24 @@ func _process_turn_loop() -> void:
 		_execute_enemy_turn(actor)
 
 func _execute_enemy_turn(actor: Boss) -> void:
+	# Skip turn if AI is disabled via debug menu
+	if battle_manager.battle_state.flags.get("ai_disabled", false):
+		battle_manager.enqueue_action(ActionFactory.skip_turn(actor.id))
+		pending_enemy_action = {}
+		_execute_next_action()
+		return
+
 	# Use new AI Controller logic
 	var ai_action = pending_enemy_action
 	if ai_action.is_empty():
 		ai_action = ai_controller.get_next_action(actor, battle_manager.battle_state)
-	
+
 	# Enqueue the AI-selected action directly
 	if ai_action.is_empty():
 		battle_manager.enqueue_action(ActionFactory.skip_turn(actor.id))
 	else:
 		battle_manager.enqueue_action(ai_action)
-		
+
 	pending_enemy_action = {}
 	_execute_next_action()
 
@@ -651,6 +676,9 @@ func _update_menu_disables(actor: Character) -> void:
 		if mp_cost > 0 and actor.mp_current < mp_cost:
 			disabled[id] = "Not enough MP."
 			continue
+		if id == ActionIds.CAT_METAMAGIC_QUICKEN and battle_manager.battle_state.flags.get("quicken_used_this_round", false):
+			disabled[id] = "Already used this round."
+			continue
 		if id == ActionIds.CAT_METAMAGIC_TWIN and battle_manager.get_alive_enemies().size() < 2:
 			disabled[id] = "Requires 2+ enemies."
 			continue
@@ -775,146 +803,15 @@ func _dict_get(dict: Dictionary, key: Variant, fallback: Variant) -> Variant:
 
 
 func _update_status_label(lines: Array) -> void:
-	# Update both debug log and game UI
+	# Update debug log
 	var text = "\n".join(lines)
 	if debug_log:
 		debug_log.text = text
-	
-	# Update Party Panel
-	if party_status_panel:
-		for child in party_status_panel.get_children():
-			child.queue_free()
-		
-		var active_id = _dict_get(battle_manager.battle_state, "active_character_id", "")
-		# Rebuild party list
-		for actor in battle_manager.battle_state.party:
-			var hbox = HBoxContainer.new()
-			hbox.add_theme_constant_override("separation", 12)
-			hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-			var name_lbl = Label.new()
-			name_lbl.text = actor.display_name
-			name_lbl.custom_minimum_size = Vector2(96, 0)
-			_apply_active_name_style(name_lbl, actor.id == active_id)
-			
-			var hp_container = Control.new()
-			hp_container.custom_minimum_size = Vector2(140, 18)
-			hp_container.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			var hp_bar = ProgressBar.new()
-			hp_bar.min_value = 0
-			hp_bar.max_value = actor.stats["hp_max"]
-			hp_bar.value = actor.hp_current
-			hp_bar.show_percentage = false
-			hp_bar.size = Vector2(140, 18)
-			var hp_bg = StyleBoxFlat.new()
-			hp_bg.bg_color = Color(0.1, 0.1, 0.1, 0.9)
-			hp_bg.corner_radius_top_left = 8
-			hp_bg.corner_radius_top_right = 8
-			hp_bg.corner_radius_bottom_left = 8
-			hp_bg.corner_radius_bottom_right = 8
-			var hp_fill = StyleBoxFlat.new()
-			hp_fill.bg_color = Color(0.2, 0.8, 0.2)
-			hp_fill.corner_radius_top_left = 8
-			hp_fill.corner_radius_top_right = 8
-			hp_fill.corner_radius_bottom_left = 8
-			hp_fill.corner_radius_bottom_right = 8
-			hp_bar.add_theme_stylebox_override("background", hp_bg)
-			hp_bar.add_theme_stylebox_override("fill", hp_fill)
-			hp_bar.add_theme_stylebox_override("fg", hp_fill)
-			var hp_text = RichTextLabel.new()
-			hp_text.bbcode_enabled = true
-			hp_text.scroll_active = false
-			hp_text.fit_content = true
-			hp_text.text = "[b]%d[/b][font_size=11]/%d[/font_size]" % [actor.hp_current, actor.stats["hp_max"]]
-			hp_text.add_theme_font_size_override("normal_font_size", 13)
-			hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			hp_text.anchor_right = 1.0
-			hp_text.anchor_bottom = 1.0
-			hp_text.offset_left = 0.0
-			hp_text.offset_top = 0.0
-			hp_text.offset_right = 0.0
-			hp_text.offset_bottom = 0.0
-			hp_bar.add_child(hp_text)
-			hp_container.add_child(hp_bar)
-			
-			var mp_lbl = Label.new()
-			if actor.stats["mp_max"] > 0:
-				mp_lbl.text = "MP:%d/%d" % [actor.mp_current, actor.stats["mp_max"]]
-			else:
-				mp_lbl.text = ""
-			mp_lbl.custom_minimum_size = Vector2(150, 0)
-			
-			# Append unique resources (short labels)
-			if actor.resources.has("ki"):
-				mp_lbl.text += " | Ki:%d" % actor.get_resource_current("ki")
-			if actor.resources.has("superiority_dice"):
-				mp_lbl.text += " | SD:%d" % actor.get_resource_current("superiority_dice")
-			if actor.resources.has("bardic_inspiration"):
-				mp_lbl.text += " | BI:%d" % actor.get_resource_current("bardic_inspiration")
-			if actor.resources.has("sorcery_points"):
-				mp_lbl.text += " | SP:%d" % actor.get_resource_current("sorcery_points")
-			mp_lbl.text += " | LB"
-			
-			var lb_bar = ProgressBar.new()
-			lb_bar.min_value = 0
-			lb_bar.max_value = 100
-			lb_bar.value = actor.limit_gauge
-			lb_bar.custom_minimum_size = Vector2(90, 12)
-			lb_bar.show_percentage = false
-			var lb_bg = StyleBoxFlat.new()
-			lb_bg.bg_color = Color(0.12, 0.12, 0.12, 0.9)
-			lb_bg.corner_radius_top_left = 6
-			lb_bg.corner_radius_top_right = 6
-			lb_bg.corner_radius_bottom_left = 6
-			lb_bg.corner_radius_bottom_right = 6
-			var lb_fill = StyleBoxFlat.new()
-			lb_fill.bg_color = Color(0.5, 0.5, 0.5)
-			if actor.limit_gauge >= 100:
-				lb_fill.bg_color = Color(0.2, 0.6, 1.0)
-			lb_fill.corner_radius_top_left = 6
-			lb_fill.corner_radius_top_right = 6
-			lb_fill.corner_radius_bottom_left = 6
-			lb_fill.corner_radius_bottom_right = 6
-			lb_bar.add_theme_stylebox_override("background", lb_bg)
-			lb_bar.add_theme_stylebox_override("fill", lb_fill)
-			lb_bar.add_theme_stylebox_override("fg", lb_fill)
-			var lb_text = Label.new()
-			lb_text.text = "%d%%" % actor.limit_gauge
-			lb_text.add_theme_font_size_override("font_size", 11)
-			lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			lb_text.anchor_right = 1.0
-			lb_text.anchor_bottom = 1.0
-			lb_text.offset_left = 0.0
-			lb_text.offset_top = 0.0
-			lb_text.offset_right = 0.0
-			lb_text.offset_bottom = 0.0
-			lb_bar.add_child(lb_text)
-			
-			hbox.add_child(name_lbl)
-			hbox.add_child(hp_container)
-			hbox.add_child(mp_lbl)
-			hbox.add_child(lb_bar)
-			party_status_panel.add_child(hbox)
 
-	# Update Boss Status (Simple Label above boss if exists or separate panel)
-	# For simplicity, let's find the boss or use a dedicated Boss Label if we created one.
-	# We didn't create a dedicated variable for boss UI yet, so let's add it dynamically or just rely on a new label.
-	if boss_hp_bar:
-		var enemies = battle_manager.get_alive_enemies()
-		if enemies.size() > 0:
-			var boss = enemies[0]
-			boss_hp_bar.max_value = boss.stats["hp_max"]
-			boss_hp_bar.value = boss.hp_current
-			if boss_hp_bar_label:
-				boss_hp_bar_label.text = "%d/%d" % [boss.hp_current, boss.stats["hp_max"]]
-			_update_boss_hp_color(boss.hp_current, boss.stats["hp_max"])
-		else:
-			if boss_hp_bar_label:
-				boss_hp_bar_label.text = "Victory?"
-			
-	# Update Status Effects Label
-	_update_status_effects_text()
+	# Delegate all UI updates to ui_manager (AnimatedHealthBar, ResourceDotGrid, etc.)
+	ui_manager.update_party_status(_apply_active_name_style)
+	ui_manager.update_boss_status()
+	ui_manager.update_status_effects_text()
 
 
 func _update_battle_log() -> void:
@@ -949,28 +846,6 @@ func _get_turn_header() -> String:
 	return "---- Turn " + str(_dict_get(battle_manager.battle_state, "turn_count", 0)) + \
 		" (" + str(_dict_get(battle_manager.battle_state, "active_character_id", "")) + ") ----"
 
-
-func _update_status_effects_text() -> void:
-	var active_statuses = []
-	for member in battle_manager.battle_state.party:
-		if member.status_effects.size() > 0:
-			var effect_names = []
-			for effect in member.status_effects:
-				effect_names.append(effect.id)
-			active_statuses.append(member.display_name + ": [" + ", ".join(effect_names) + "]")
-	
-	for enemy in battle_manager.battle_state.enemies:
-		if enemy.status_effects.size() > 0:
-			var effect_names = []
-			for effect in enemy.status_effects:
-				effect_names.append(effect.id)
-			active_statuses.append(enemy.display_name + ": [" + ", ".join(effect_names) + "]")
-			
-	if status_effects_display:
-		if active_statuses.is_empty():
-			status_effects_display.text = ""
-		else:
-			status_effects_display.text = "Statuses: " + " | ".join(active_statuses)
 
 
 func _create_floating_text(pos: Vector2, text: String, color: Color) -> void:
@@ -1024,28 +899,16 @@ func _apply_input_cooldown(ms: int) -> void:
 func _is_input_cooldown_active() -> bool:
 	return Time.get_ticks_msec() < input_cooldown_until_ms
 
-func _update_boss_hp_color(current_hp: int, max_hp: int) -> void:
-	if boss_hp_fill_style == null:
-		return
-	var ratio := 0.0
-	if max_hp > 0:
-		ratio = float(current_hp) / float(max_hp)
-	if ratio <= 0.25:
-		boss_hp_fill_style.bg_color = Color(0.85, 0.2, 0.2)
-	elif ratio <= 0.5:
-		boss_hp_fill_style.bg_color = Color(0.95, 0.65, 0.15)
-	else:
-		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
 
 func _on_status_added(actor_id: String, status_id: String) -> void:
 	if status_id == StatusEffectIds.POISON:
 		_start_poison_tint(actor_id)
-	_update_status_effects_text()
+	ui_manager.update_status_effects_text()
 
 func _on_status_removed(actor_id: String, status_id: String) -> void:
 	if status_id == StatusEffectIds.POISON:
 		_stop_poison_tint(actor_id)
-	_update_status_effects_text()
+	ui_manager.update_status_effects_text()
 
 func _start_poison_tint(actor_id: String) -> void:
 	animation_controller.start_poison_tint(actor_id)

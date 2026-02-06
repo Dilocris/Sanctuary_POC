@@ -167,8 +167,13 @@ func _update_position() -> void:
 				count += 1
 		if count > 0:
 			global_position = (sum / float(count)) + Vector2(0, -50)
-			_set_highlight(null)
-			return
+		# Highlight all targets in the group
+		_clear_highlights()
+		for t in valid_targets:
+			_apply_outline(t, true)
+			if not highlighted_targets.has(t):
+				highlighted_targets.append(t)
+		return
 
 	var target = valid_targets[current_index]
 	# Assuming target is a Node2D/Node3D with a position. 

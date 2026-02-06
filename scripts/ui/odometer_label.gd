@@ -26,6 +26,7 @@ var _flash_rect: ColorRect
 func _ready() -> void:
 	custom_minimum_size = Vector2(digit_width * max_digits, digit_height)
 	size = custom_minimum_size
+	clip_children = Control.CLIP_CHILDREN_AND_DRAW
 	_create_display()
 
 

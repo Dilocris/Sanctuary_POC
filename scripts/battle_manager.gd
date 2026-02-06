@@ -84,6 +84,8 @@ func setup_state(party: Array, enemies: Array) -> void:
 	battle_state.flags = {
 		"ludwig_second_wind_used": false,
 		"ninos_counterspell_used": false,
+		"quicken_used_this_round": false,
+		"ai_disabled": false,
 		"metamagic": {},
 		"marcus_pull_target": "",
 		"marcus_turn_index": 0,

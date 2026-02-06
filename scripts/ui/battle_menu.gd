@@ -91,8 +91,8 @@ func _build_main_menu() -> void:
 	else:
 		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn."})
 		
-	# Common Item
-	menu_items.append({"label": "Item", "id": "ITEM_SUB", "desc": "Use consumables."})
+	# Item system (TODO: implement inventory/consumables)
+	# menu_items.append({"label": "Item", "id": "ITEM_SUB", "desc": "Use consumables."})
 	
 	_render_menu_items()
 

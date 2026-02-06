@@ -73,21 +73,34 @@ func spawn_damage_numbers(target_id: String, damages: Array) -> void:
 		var timer = _scene_root.get_tree().create_timer(delay)
 		var pos = actor.position + offset
 		timer.timeout.connect(func ():
-			create_damage_text(pos, str(dmg_val))
+			create_damage_text(pos, str(dmg_val), dmg_val)
 		)
 
 
-func create_damage_text(pos: Vector2, text: String) -> void:
+const HEAVY_DAMAGE_THRESHOLD := 50
+const NORMAL_DAMAGE_FONT := 32
+const HEAVY_DAMAGE_FONT := 44
+
+func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> void:
+	var is_heavy = damage_value >= HEAVY_DAMAGE_THRESHOLD
+	var font_size = HEAVY_DAMAGE_FONT if is_heavy else NORMAL_DAMAGE_FONT
+	var color = Color(1.0, 0.3, 0.1) if is_heavy else Color(1.0, 0.55, 0.1)
+
 	var label = Label.new()
 	label.text = text
-	label.modulate = Color(1.0, 0.55, 0.1)
+	label.modulate = color
 	label.position = pos + Vector2(0, -64)
-	label.add_theme_font_size_override("font_size", 32)
+	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_constant_override("outline_size", 3 if is_heavy else 2)
 	_scene_root.add_child(label)
 
 	var tween = _scene_root.create_tween()
+	if is_heavy:
+		# Pop-in scale effect for heavy hits
+		label.pivot_offset = label.size / 2.0
+		label.scale = Vector2(1.3, 1.3)
+		tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(label.queue_free)
@@ -215,16 +228,32 @@ func play_hit_shake(actor_id: String) -> void:
 		if existing:
 			existing.kill()
 	var base_pos = _actor_base_positions.get(actor_id, sprite.position)
+
+	# Determine recoil direction: party members recoil left, enemies recoil right
+	var is_party = _is_party_member(actor_id)
+	var recoil_dir = -1.0 if is_party else 1.0
+
 	var tween = _scene_root.create_tween()
-	tween.tween_property(sprite, "position:x", base_pos.x + 5, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x - 5, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x + 3, 0.04)
-	tween.tween_property(sprite, "position:x", base_pos.x, 0.05)
+	# Initial directional recoil (pushed away from attacker)
+	tween.tween_property(sprite, "position", base_pos + Vector2(recoil_dir * 8, -2), 0.03).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Lateral shake
+	tween.tween_property(sprite, "position:x", base_pos.x - recoil_dir * 4, 0.04)
+	tween.tween_property(sprite, "position:y", base_pos.y, 0.03)
+	tween.tween_property(sprite, "position:x", base_pos.x + recoil_dir * 2, 0.04)
+	# Settle back
+	tween.tween_property(sprite, "position", base_pos, 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_shake_tweens[actor_id] = tween
 	if _battle_manager.battle_state.get("active_character_id", "") == actor_id:
 		resume_idle_if_active(actor_id, 0.35)
 	else:
 		resume_idle_if_active(actor_id, 0.6)
+
+
+func _is_party_member(actor_id: String) -> bool:
+	for member in _battle_manager.battle_state.party:
+		if member.id == actor_id:
+			return true
+	return false
 
 
 # ============================================================================

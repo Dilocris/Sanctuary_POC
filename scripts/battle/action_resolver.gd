@@ -379,8 +379,12 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			return ActionResult.new(false, "missing_actor").to_dict()
 		ActionIds.CAT_METAMAGIC_QUICKEN:
 			if actor != null:
+				if _battle_manager.battle_state.flags.get("quicken_used_this_round", false):
+					_battle_manager.add_message("Quicken Spell already used this round.")
+					return ActionResult.new(false, "quicken_already_used").to_dict()
 				actor.consume_resources(action)
 				_battle_manager._set_metamagic(actor_id, "QUICKEN")
+				_battle_manager.battle_state.flags["quicken_used_this_round"] = true
 				_battle_manager.add_message(actor.display_name + " prepares Quicken Spell.")
 				return ActionResult.new(true, "", {"metamagic": "quicken"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()

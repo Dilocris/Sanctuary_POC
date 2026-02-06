@@ -17,13 +17,14 @@ var _battle_manager: BattleManager
 # UI Constants - Moved lower UI closer to bottom edge
 const LOWER_UI_TOP := 520
 const PANEL_PADDING := 8
-const ROW_SPACING := 4
+const ROW_SPACING := 2
 const COLUMN_SPACING := 8
 const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
 const INACTIVE_NAME_COLOR := Color(0.9, 0.9, 0.9)
 const ACTIVE_NAME_FONT_SIZE := 14
 const INACTIVE_NAME_FONT_SIZE := 12
-const BAR_HEIGHT := 14
+const HP_BAR_HEIGHT := 12
+const MP_BAR_HEIGHT := 8
 const BAR_WIDTH := 100
 const NAME_WIDTH := 70
 const MP_COLOR := Color(0.25, 0.45, 0.85)
@@ -42,9 +43,7 @@ var phase_overlay: ColorRect
 var phase_label: Label
 var limit_overlay: ColorRect
 var limit_label: Label
-var boss_hp_bar: ProgressBar
-var boss_hp_bar_label: Label
-var boss_hp_fill_style: StyleBoxFlat
+var boss_hp_bar: AnimatedHealthBar
 var battle_log_panel: RichTextLabel
 
 # Persistent party UI elements (for animation support)
@@ -105,12 +104,12 @@ func create_game_ui() -> void:
 	# Party Status Panel (Bottom Right) - tighter layout
 	var panel_bg = Panel.new()
 	panel_bg.position = Vector2(580, LOWER_UI_TOP)
-	panel_bg.size = Vector2(560, 120)
+	panel_bg.size = Vector2(560, 128)
 	_scene_root.add_child(panel_bg)
 
 	party_status_panel = VBoxContainer.new()
 	party_status_panel.position = Vector2(PANEL_PADDING, PANEL_PADDING)
-	party_status_panel.size = Vector2(544, 104)
+	party_status_panel.size = Vector2(544, 112)
 	party_status_panel.add_theme_constant_override("separation", ROW_SPACING)
 	panel_bg.add_child(party_status_panel)
 
@@ -202,6 +201,14 @@ func create_game_ui() -> void:
 	battle_log_panel.scroll_following = true
 	battle_log_panel.add_theme_font_size_override("normal_font_size", 12)
 	_scene_root.add_child(battle_log_panel)
+
+	# F1 hint
+	var f1_hint = Label.new()
+	f1_hint.text = "F1: Settings"
+	f1_hint.position = Vector2(1050, 628)
+	f1_hint.add_theme_font_size_override("font_size", 10)
+	f1_hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.6))
+	_scene_root.add_child(f1_hint)
 
 
 # ============================================================================
@@ -341,30 +348,32 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 		name_lbl.text = actor.display_name
 		name_lbl.custom_minimum_size = Vector2(NAME_WIDTH, 0)
 		name_lbl.add_theme_font_size_override("font_size", INACTIVE_NAME_FONT_SIZE)
+		name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		apply_name_style_func.call(name_lbl, actor_id == active_id)
 		_party_name_labels[actor_id] = name_lbl
 
 		# Bars container (HP and MP stacked vertically)
 		var bars_vbox = VBoxContainer.new()
-		bars_vbox.add_theme_constant_override("separation", 2)
+		bars_vbox.add_theme_constant_override("separation", 1)
+		bars_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-		# HP bar (green, animated)
+		# HP bar (green, animated with rolling digits)
 		var hp_bar = AnimatedHealthBarClass.new()
-		hp_bar.bar_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
-		hp_bar.custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
-		hp_bar.use_odometer = false  # Simpler display for tighter layout
-		hp_bar.corner_radius = 4
+		hp_bar.bar_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
+		hp_bar.custom_minimum_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
+		hp_bar.use_odometer = false
+		hp_bar.corner_radius = 3
 		_party_hp_bars[actor_id] = hp_bar
 		bars_vbox.add_child(hp_bar)
 
-		# MP bar (blue, only if actor has MP)
+		# MP bar (blue, thinner — subordinate to HP)
 		if actor.stats["mp_max"] > 0:
 			var mp_bar = AnimatedHealthBarClass.new()
-			mp_bar.bar_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
-			mp_bar.custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
+			mp_bar.bar_size = Vector2(BAR_WIDTH, MP_BAR_HEIGHT)
+			mp_bar.custom_minimum_size = Vector2(BAR_WIDTH, MP_BAR_HEIGHT)
 			mp_bar.main_color = MP_COLOR
 			mp_bar.use_odometer = false
-			mp_bar.corner_radius = 4
+			mp_bar.corner_radius = 2
 			_party_mp_bars[actor_id] = mp_bar
 			bars_vbox.add_child(mp_bar)
 
@@ -373,9 +382,9 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 		if res_max > 0:
 			var res_grid = ResourceDotGridClass.new()
 			res_grid.max_value = res_max
-			res_grid.dot_size = 5
-			res_grid.dot_spacing = 2
-			res_grid.row_spacing = 1
+			res_grid.dot_size = 8
+			res_grid.dot_spacing = 3
+			res_grid.row_spacing = 2
 			res_grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			_party_resource_grids[actor_id] = res_grid
 
@@ -386,6 +395,7 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 		lb_bar.value = actor.limit_gauge
 		lb_bar.custom_minimum_size = Vector2(60, 10)
 		lb_bar.show_percentage = false
+		lb_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 		var lb_bg = StyleBoxFlat.new()
 		lb_bg.bg_color = Color(0.15, 0.15, 0.15, 0.9)
@@ -418,11 +428,14 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 		lb_bar.add_child(lb_text)
 		_party_lb_texts[actor_id] = lb_text
 
-		# Assemble row: Name | Bars | Resource | LB
+		# Assemble row: Name | Bars | Resource | (spacer) | LB
 		hbox.add_child(name_lbl)
 		hbox.add_child(bars_vbox)
 		if _party_resource_grids.has(actor_id):
 			hbox.add_child(_party_resource_grids[actor_id])
+		var spacer = Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hbox.add_child(spacer)
 		hbox.add_child(lb_bar)
 		party_status_panel.add_child(hbox)
 
@@ -449,28 +462,7 @@ func update_boss_status() -> void:
 	var enemies = _battle_manager.get_alive_enemies()
 	if enemies.size() > 0:
 		var boss = enemies[0]
-		boss_hp_bar.max_value = boss.stats["hp_max"]
-		boss_hp_bar.value = boss.hp_current
-		if boss_hp_bar_label:
-			boss_hp_bar_label.text = "%d/%d" % [boss.hp_current, boss.stats["hp_max"]]
-		update_boss_hp_color(boss.hp_current, boss.stats["hp_max"])
-	else:
-		if boss_hp_bar_label:
-			boss_hp_bar_label.text = "Victory?"
-
-
-func update_boss_hp_color(current_hp: int, max_hp: int) -> void:
-	if boss_hp_fill_style == null:
-		return
-	var ratio := 0.0
-	if max_hp > 0:
-		ratio = float(current_hp) / float(max_hp)
-	if ratio <= 0.25:
-		boss_hp_fill_style.bg_color = Color(0.85, 0.2, 0.2)
-	elif ratio <= 0.5:
-		boss_hp_fill_style.bg_color = Color(0.95, 0.65, 0.15)
-	else:
-		boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
+		boss_hp_bar.set_hp(boss.hp_current, boss.stats["hp_max"])
 
 
 func update_battle_log() -> void:
@@ -609,7 +601,5 @@ func show_limit_overlay(action_id: String) -> void:
 # BOSS HP BAR (Set externally when boss is created)
 # ============================================================================
 
-func set_boss_hp_bar(bar: ProgressBar, label: Label, fill_style: StyleBoxFlat) -> void:
+func set_boss_hp_bar(bar: AnimatedHealthBar) -> void:
 	boss_hp_bar = bar
-	boss_hp_bar_label = label
-	boss_hp_fill_style = fill_style

@@ -4,6 +4,8 @@ class_name BattleRenderer
 ## BattleRenderer - Manages creation of battle visuals (characters, bosses, background)
 ## Extracted from battle_scene.gd for single-responsibility design
 
+const AnimatedHealthBarClass = preload("res://scripts/ui/animated_health_bar.gd")
+
 # Constants
 const ACTOR_SCALE := 2.0
 const BOSS_SCALE := 2.0
@@ -42,9 +44,7 @@ var actor_base_self_modulates: Dictionary = {}
 var actor_root_positions: Dictionary = {}
 
 # Boss HP bar references
-var boss_hp_bar: ProgressBar
-var boss_hp_bar_label: Label
-var boss_hp_fill_style: StyleBoxFlat
+var boss_hp_bar: AnimatedHealthBar
 
 
 func setup(scene_root: Node) -> void:
@@ -185,42 +185,11 @@ func _create_boss_hp_bar(boss: Boss, data: Dictionary) -> void:
 	if name_lbl == null:
 		return
 
-	boss_hp_bar = ProgressBar.new()
-	boss_hp_bar.min_value = 0
-	boss_hp_bar.max_value = data.get("stats", {}).get("hp_max", 1)
-	boss_hp_bar.value = boss_hp_bar.max_value
-	boss_hp_bar.show_percentage = false
+	boss_hp_bar = AnimatedHealthBarClass.new()
+	boss_hp_bar.bar_size = Vector2(name_lbl.size.x, 26)
+	boss_hp_bar.use_odometer = false
+	boss_hp_bar.corner_radius = 8
 	boss_hp_bar.position = Vector2(name_lbl.position.x, name_lbl.position.y + name_lbl.size.y + 2)
-	boss_hp_bar.size = Vector2(name_lbl.size.x, 26)
-
-	boss_hp_bar_label = Label.new()
-	boss_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	boss_hp_bar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	boss_hp_bar_label.anchor_right = 1.0
-	boss_hp_bar_label.anchor_bottom = 1.0
-	boss_hp_bar_label.offset_left = 0.0
-	boss_hp_bar_label.offset_top = 0.0
-	boss_hp_bar_label.offset_right = 0.0
-	boss_hp_bar_label.offset_bottom = 0.0
-	boss_hp_bar.add_child(boss_hp_bar_label)
-
-	var bg_style = StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.9)
-	bg_style.corner_radius_top_left = 8
-	bg_style.corner_radius_top_right = 8
-	bg_style.corner_radius_bottom_left = 8
-	bg_style.corner_radius_bottom_right = 8
-
-	boss_hp_fill_style = StyleBoxFlat.new()
-	boss_hp_fill_style.bg_color = Color(0.2, 0.8, 0.2)
-	boss_hp_fill_style.corner_radius_top_left = 8
-	boss_hp_fill_style.corner_radius_top_right = 8
-	boss_hp_fill_style.corner_radius_bottom_left = 8
-	boss_hp_fill_style.corner_radius_bottom_right = 8
-
-	boss_hp_bar.add_theme_stylebox_override("background", bg_style)
-	boss_hp_bar.add_theme_stylebox_override("fill", boss_hp_fill_style)
-	boss_hp_bar.add_theme_stylebox_override("fg", boss_hp_fill_style)
 	boss.add_child(boss_hp_bar)
 
 

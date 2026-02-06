@@ -15,7 +15,9 @@ const OdometerLabelClass = preload("res://scripts/ui/odometer_label.gd")
 @export var background_color: Color = Color(0.12, 0.12, 0.12, 0.95)
 @export var corner_radius: int = 6
 @export var bar_size: Vector2 = Vector2(140, 18)
-@export var use_odometer: bool = false     # Disabled by default for cleaner look
+@export var use_odometer: bool = true      # Rolling digit display for HP numbers
+@export var low_hp_threshold: float = 0.25 # Fraction of max HP to trigger warning
+@export var low_hp_color: Color = Color(0.85, 0.2, 0.2)
 
 # State machine
 enum State { IDLE, HOLD, DRAIN }
@@ -28,6 +30,8 @@ var _current_hp: int = 0
 var _max_hp: int = 1
 var _yellow_value: float = 0.0
 var _previous_hp: int = 0  # For detecting damage vs heal
+var _is_low_hp: bool = false
+var _heartbeat_tween: Tween
 
 # Node references
 var _yellow_bar: ProgressBar
@@ -42,6 +46,7 @@ var _hp_container: HBoxContainer     # Container for odometer display
 func _ready() -> void:
 	custom_minimum_size = bar_size
 	size = bar_size
+	clip_children = Control.CLIP_CHILDREN_AND_DRAW
 	_create_bars()
 
 
@@ -132,29 +137,36 @@ func _create_odometer_display() -> void:
 	_hp_container.position = Vector2.ZERO
 	_hp_container.size = bar_size
 	_hp_container.z_index = 1
+	_hp_container.clip_children = Control.CLIP_CHILDREN_AND_DRAW
 	_hp_container.add_theme_constant_override("separation", 0)
 	add_child(_hp_container)
 
+	# Scale odometer sizes to fit bar height
+	var d_height = mini(int(bar_size.y), 16)
+	var d_font = maxi(8, d_height - 3)
+	var d_width = maxi(6, int(d_height * 0.55))
+	var text_font = maxi(7, d_height - 4)
+
 	# Current HP (odometer)
 	_hp_odometer = OdometerLabelClass.new()
-	_hp_odometer.font_size = 12
-	_hp_odometer.digit_width = 8
-	_hp_odometer.digit_height = 14
+	_hp_odometer.font_size = d_font
+	_hp_odometer.digit_width = d_width
+	_hp_odometer.digit_height = d_height
 	_hp_odometer.max_digits = 4
-	_hp_odometer.custom_minimum_size = Vector2(32, 14)
+	_hp_odometer.custom_minimum_size = Vector2(d_width * 4, d_height)
 	_hp_container.add_child(_hp_odometer)
 
 	# Separator "/"
 	_hp_separator = Label.new()
 	_hp_separator.text = "/"
-	_hp_separator.add_theme_font_size_override("font_size", 11)
+	_hp_separator.add_theme_font_size_override("font_size", text_font)
 	_hp_separator.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
 	_hp_container.add_child(_hp_separator)
 
 	# Max HP (static label)
 	_hp_max_label = Label.new()
 	_hp_max_label.text = "0"
-	_hp_max_label.add_theme_font_size_override("font_size", 11)
+	_hp_max_label.add_theme_font_size_override("font_size", text_font)
 	_hp_max_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	_hp_container.add_child(_hp_max_label)
 
@@ -186,6 +198,9 @@ func set_hp(current: int, max_hp: int) -> void:
 	# Always update main bar and text immediately
 	_main_bar.value = _current_hp
 	_update_text()
+
+	# Check low HP state
+	_check_low_hp()
 
 	_previous_hp = _current_hp
 
@@ -224,9 +239,18 @@ func _on_damage(old_hp: int, _new_hp: int) -> void:
 		_yellow_value = float(old_hp)
 		_yellow_bar.value = _yellow_value
 
+	# Quick modulate flash on the bar to draw attention
+	_pulse_on_damage()
+
 	# Start/restart hold timer
 	_state = State.HOLD
 	_hold_timer = hold_time
+
+
+func _pulse_on_damage() -> void:
+	var tween = create_tween()
+	modulate = Color(1.4, 0.9, 0.9)
+	tween.tween_property(self, "modulate", Color.WHITE, 0.25).set_ease(Tween.EASE_OUT)
 
 
 func _on_heal(new_hp: int) -> void:
@@ -265,9 +289,36 @@ func _update_text(animate: bool = true) -> void:
 		_hp_text.text = "[b]%d[/b][font_size=11]/%d[/font_size]" % [_current_hp, _max_hp]
 
 
+## Check if HP has crossed the low-HP threshold and update visuals.
+func _check_low_hp() -> void:
+	var ratio = float(_current_hp) / float(_max_hp) if _max_hp > 0 else 1.0
+	var now_low = ratio <= low_hp_threshold and _current_hp > 0
+
+	if now_low and not _is_low_hp:
+		_is_low_hp = true
+		set_main_color(low_hp_color)
+		_start_heartbeat()
+	elif not now_low and _is_low_hp:
+		_is_low_hp = false
+		set_main_color(main_color)
+		_stop_heartbeat()
+
+
+func _start_heartbeat() -> void:
+	_stop_heartbeat()
+	_heartbeat_tween = create_tween().set_loops()
+	_heartbeat_tween.tween_property(self, "modulate", Color(1.3, 0.85, 0.85), 0.3).set_ease(Tween.EASE_IN)
+	_heartbeat_tween.tween_property(self, "modulate", Color.WHITE, 0.5).set_ease(Tween.EASE_OUT)
+
+
+func _stop_heartbeat() -> void:
+	if _heartbeat_tween and _heartbeat_tween.is_valid():
+		_heartbeat_tween.kill()
+	modulate = Color.WHITE
+
+
 ## Update bar colors (e.g., for low HP warning).
 func set_main_color(color: Color) -> void:
-	main_color = color
 	if _main_bar:
 		var fill_style = _main_bar.get_theme_stylebox("fill") as StyleBoxFlat
 		if fill_style:

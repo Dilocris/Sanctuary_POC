@@ -28,6 +28,11 @@ var damage_flash_color: Color = Color(1.0, 0.95, 0.95, 0.08)
 var pop_scale: float = 1.03  # 3% scale increase
 var pop_duration: float = 0.1
 
+# Camera nudge settings
+var nudge_enabled: bool = true
+var nudge_distance: float = 3.0
+var nudge_duration: float = 0.08
+
 # Heavy hit threshold (damage amount that triggers heavy effects)
 var heavy_hit_threshold: int = 50
 
@@ -68,6 +73,13 @@ func on_damage_dealt(damage: int, target_sprite: Node2D = null) -> void:
 		return
 
 	var is_heavy = damage >= heavy_hit_threshold
+
+	# Directional camera nudge toward target
+	if target_sprite and _scene_root is Node2D:
+		var screen_center = Vector2(576, 324)  # Half of 1152x648
+		var direction = (target_sprite.global_position - screen_center).normalized()
+		var dist = nudge_distance * (2.0 if is_heavy else 1.0)
+		nudge_camera(direction, dist)
 
 	# Camera shake
 	if is_heavy:
@@ -114,6 +126,18 @@ func shake_camera(amplitude: float, duration: float) -> void:
 
 	# Return to original position
 	_shake_tween.tween_property(_scene_root, "position", _original_root_position, 0.02)
+
+
+## Short positional nudge toward the impact direction, then snap back.
+func nudge_camera(direction: Vector2, distance: float = -1.0) -> void:
+	if not nudge_enabled or _scene_root == null or not _scene_root is Node2D:
+		return
+	if distance < 0:
+		distance = nudge_distance
+	var offset = direction * distance
+	var nudge_tween = _scene_root.create_tween()
+	nudge_tween.tween_property(_scene_root, "position", _original_root_position + offset, nudge_duration * 0.4)
+	nudge_tween.tween_property(_scene_root, "position", _original_root_position, nudge_duration * 0.6).set_ease(Tween.EASE_OUT)
 
 
 ## Flash the screen with a color overlay.
@@ -172,6 +196,21 @@ func on_critical_hit(_damage: int, target_sprite: Node2D = null) -> void:
 func on_phase_transition() -> void:
 	shake_camera(heavy_shake_amplitude * 2.0, 0.3)
 	flash_screen(Color(0.8, 0.2, 0.2, 0.25), 0.25)
+
+
+## Brief slow-motion dip when an actor is KO'd (finishing blow).
+func on_finishing_blow(target_sprite: Node2D = null) -> void:
+	# Dramatic slowdown
+	Engine.time_scale = 0.3
+	flash_screen(Color(1.0, 1.0, 1.0, 0.15), 0.3)
+	shake_camera(heavy_shake_amplitude * 1.3, 0.2)
+
+	if target_sprite:
+		pop_sprite(target_sprite, pop_scale * 1.04)
+
+	# Restore after brief pause (using process-independent timer)
+	var timer = _scene_root.get_tree().create_timer(0.35, true, false, true)
+	timer.timeout.connect(_restore_time_scale)
 
 
 ## Trigger limit break activation effect.
