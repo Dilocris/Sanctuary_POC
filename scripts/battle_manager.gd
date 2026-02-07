@@ -14,6 +14,7 @@ signal status_tick(actor_id: String, amount: int, kind: String)
 
 var battle_state := {
 	"phase": 1,
+	"state": 0,
 	"turn_count": 0,
 	"active_character_id": "",
 	"party": [],
@@ -70,9 +71,36 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.CAT_LIMIT: "Genie's Wrath"
 }
 
+enum BattleState {
+	BATTLE_INIT,
+	ROUND_INIT,
+	TURN_START,
+	ACTION_SELECT,
+	ACTION_VALIDATE,
+	ACTION_COMMIT,
+	ACTION_RESOLVE,
+	TURN_END,
+	ROUND_END,
+	BATTLE_END
+}
+
+const BATTLE_STATE_LABELS := {
+	BattleState.BATTLE_INIT: "BATTLE_INIT",
+	BattleState.ROUND_INIT: "ROUND_INIT",
+	BattleState.TURN_START: "TURN_START",
+	BattleState.ACTION_SELECT: "ACTION_SELECT",
+	BattleState.ACTION_VALIDATE: "ACTION_VALIDATE",
+	BattleState.ACTION_COMMIT: "ACTION_COMMIT",
+	BattleState.ACTION_RESOLVE: "ACTION_RESOLVE",
+	BattleState.TURN_END: "TURN_END",
+	BattleState.ROUND_END: "ROUND_END",
+	BattleState.BATTLE_END: "BATTLE_END"
+}
+
 
 func setup_state(party: Array, enemies: Array) -> void:
 	battle_state.phase = 1
+	battle_state.state = BattleState.BATTLE_INIT
 	battle_state.turn_count = 0
 	battle_state.active_character_id = ""
 	battle_state.party = party
@@ -96,6 +124,19 @@ func setup_state(party: Array, enemies: Array) -> void:
 	_ensure_action_resolver()
 	_ensure_turn_manager()
 	_ensure_status_processor()
+
+
+func advance_state(next_state: int) -> void:
+	if battle_state.state == next_state:
+		return
+	battle_state.state = next_state
+	add_message("State -> " + _get_state_label(next_state))
+
+
+func _get_state_label(state_id: int) -> String:
+	if BATTLE_STATE_LABELS.has(state_id):
+		return BATTLE_STATE_LABELS[state_id]
+	return str(state_id)
 
 
 func _ensure_action_resolver() -> void:
