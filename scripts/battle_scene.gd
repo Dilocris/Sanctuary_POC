@@ -33,7 +33,7 @@ var actor_root_positions: Dictionary = {}
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
-var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END
+var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END, REWARDS
 var active_player_id = ""
 var battle_over: bool = false
 var pending_enemy_action: Dictionary = {}
@@ -43,6 +43,7 @@ const LOWER_UI_TOP := 492
 
 const BattleMenuScene = preload("res://scenes/ui/battle_menu.tscn")
 const TargetCursorScene = preload("res://scenes/ui/target_cursor.tscn")
+const RewardsPanelScene = preload("res://scenes/ui/rewards_panel.tscn")
 const SettingsMenuClass = preload("res://scripts/ui/settings_menu.gd")
 const ActorDataScript = preload("res://scripts/resources/actor_data.gd")
 const DataCloneUtil = preload("res://scripts/utils/data_clone.gd")
@@ -109,9 +110,15 @@ var ui_manager: BattleUIManager
 var renderer: BattleRenderer
 var game_feel_controller: GameFeelController
 var settings_menu: Node  # SettingsMenuClass instance
+var rewards_panel: Control
+var rewards_controller: RewardsController
+
+@export_enum("Story", "Normal", "Hard") var battle_difficulty: String = "Normal"
+@export var victory_next_scene: String = ""
 
 
 func _ready() -> void:
+	set_process_unhandled_input(true)
 	battle_manager = BattleManager.new()
 	add_child(battle_manager)
 
@@ -160,6 +167,12 @@ func _ready() -> void:
 	add_child(target_cursor)
 	target_cursor.target_selected.connect(_on_target_selected)
 	target_cursor.selection_canceled.connect(_on_target_canceled)
+
+	rewards_panel = RewardsPanelScene.instantiate()
+	rewards_panel.visible = false
+	rewards_panel.z_index = 50
+	add_child(rewards_panel)
+	rewards_controller = rewards_panel as RewardsController
 
 	# Settings/Debug overlay (F1)
 	settings_menu = SettingsMenuClass.new()
@@ -230,7 +243,7 @@ func _ready() -> void:
 		actor_root_positions
 	)
 
-	battle_manager.setup_state(party, enemies)
+	battle_manager.setup_state(party, enemies, battle_difficulty)
 
 	# Initialize boss HP bar with current values (no animation on first display)
 	if boss_hp_bar:
@@ -407,6 +420,9 @@ func _on_battle_ended(result: String) -> void:
 		_cleanup_actor_tweens(actor_id)
 	# Clean up game feel effects
 	game_feel_controller.cleanup()
+	state = "BATTLE_END"
+	if result == "victory":
+		_show_rewards_summary()
 
 func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
 	var actor = battle_manager.get_actor_by_id(actor_id)
@@ -898,6 +914,33 @@ func _apply_input_cooldown(ms: int) -> void:
 
 func _is_input_cooldown_active() -> bool:
 	return Time.get_ticks_msec() < input_cooldown_until_ms
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if state != "REWARDS":
+		return
+	if event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_cancel"):
+		_transition_after_rewards()
+
+
+func _show_rewards_summary() -> void:
+	state = "REWARDS"
+	input_locked = true
+	battle_menu.set_enabled(false)
+	target_cursor.deactivate()
+	var rewards = battle_manager.get_rewards_summary()
+	if rewards_controller:
+		rewards_controller.show_rewards(rewards)
+	message_log("Victory! Rewards ready.")
+
+
+func _transition_after_rewards() -> void:
+	if rewards_panel:
+		rewards_panel.visible = false
+	if victory_next_scene != "" and ResourceLoader.exists(victory_next_scene):
+		get_tree().change_scene_to_file(victory_next_scene)
+	else:
+		get_tree().reload_current_scene()
 
 
 func _on_status_added(actor_id: String, status_id: String) -> void:
