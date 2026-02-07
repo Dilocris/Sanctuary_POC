@@ -10,13 +10,22 @@ func setup(battle_manager: BattleManager) -> void:
 	_battle_manager = battle_manager
 
 
-func execute_basic_attack(attacker_id: String, target_id: String, multiplier: float = 1.0) -> Dictionary:
+func execute_basic_attack(attacker_id: String, target_id: String, multiplier: float = 1.0, action_tags: Array = []) -> Dictionary:
 	var attacker = _battle_manager.get_actor_by_id(attacker_id)
 	var target = _battle_manager.get_actor_by_id(target_id)
 	if attacker == null or target == null:
 		return ActionResult.new(false, "invalid_actor").to_dict()
 	if attacker.is_ko() or target.is_ko():
 		return ActionResult.new(false, "target_ko").to_dict()
+
+	if not _ignores_evasion(action_tags) and _is_attack_evaded(attacker, target):
+		_battle_manager.add_message(attacker.display_name + " misses " + target.display_name + "!")
+		return ActionResult.new(true, "", {
+			"hit": false,
+			"damage": 0,
+			"attacker_id": attacker_id,
+			"target_id": target_id
+		}).to_dict()
 
 	var damage = DamageCalculator.calculate_physical_damage(attacker, target, multiplier)
 	var bonus_dmg = 0
@@ -28,6 +37,7 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 	_apply_damage_with_limit(attacker, target, damage)
 	_battle_manager.add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
 	return ActionResult.new(true, "", {
+		"hit": true,
 		"damage": damage,
 		"bonus": bonus_dmg,
 		"attacker_id": attacker_id,
@@ -51,7 +61,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0))
+			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0), action.get("tags", []))
 		ActionIds.SKIP_TURN:
 			_battle_manager.add_message("Action skipped.")
 			return ActionResult.new(true, "", {"skipped": true}).to_dict()
@@ -60,7 +70,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var flurry_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0))
+			var flurry_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0), action.get("tags", []))
 			var flurry_total = 0
 			for hit in flurry_hits:
 				flurry_total += int(hit)
@@ -76,9 +86,9 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var stun_damage = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0))
+			var stun_damage = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0), action.get("tags", []))
 			var applied = false
-			if randf() <= _battle_manager.STUNNING_STRIKE_PROC_CHANCE:
+			if stun_damage.get("payload", {}).get("hit", false) and randf() <= _battle_manager.STUNNING_STRIKE_PROC_CHANCE:
 				var target = _battle_manager.get_actor_by_id(targets[0])
 				if target != null:
 					target.add_status(StatusEffectFactory.stun(1))
@@ -116,13 +126,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var base_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
-			var bonus_dmg = randi_range(1, 8)
-			var total_dmg = base_result.get("payload", {}).get("damage", 0) + bonus_dmg
+			var base_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
+			var bonus_dmg = 0
+			var total_dmg = base_result.get("payload", {}).get("damage", 0)
 			var target_lung = _battle_manager.get_actor_by_id(targets[0])
-			if target_lung != null:
+			if target_lung != null and base_result.get("payload", {}).get("hit", false):
+				bonus_dmg = randi_range(1, 8)
 				_apply_damage_with_limit(actor, target_lung, bonus_dmg)
 				_battle_manager.add_message(actor.display_name + " lunges! Bonus " + str(bonus_dmg) + " damage!")
+				total_dmg += bonus_dmg
 			return ActionResult.new(true, "", {
 				"damage": total_dmg,
 				"bonus": bonus_dmg,
@@ -135,13 +147,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action)
 			# Precision ignores evasion (not implemented yet), so same as Lunging for now but explicit
-			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
-			var bonus_prec = randi_range(1, 8)
-			var total_prec = base_prec.get("payload", {}).get("damage", 0) + bonus_prec
+			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
+			var bonus_prec = 0
+			var total_prec = base_prec.get("payload", {}).get("damage", 0)
 			var target_prec = _battle_manager.get_actor_by_id(targets[0])
-			if target_prec != null:
+			if target_prec != null and base_prec.get("payload", {}).get("hit", false):
+				bonus_prec = randi_range(1, 8)
 				_apply_damage_with_limit(actor, target_prec, bonus_prec)
 				_battle_manager.add_message(actor.display_name + " strikes precisely! Bonus " + str(bonus_prec) + " damage!")
+				total_prec += bonus_prec
 			return ActionResult.new(true, "", {
 				"damage": total_prec,
 				"bonus": bonus_prec,
@@ -153,9 +167,9 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var bash_result = execute_basic_attack(actor_id, targets[0], 1.0)
+			var bash_result = execute_basic_attack(actor_id, targets[0], 1.0, action.get("tags", []))
 			var stunned = false
-			if randf() <= _battle_manager.SHIELD_BASH_STUN_CHANCE:
+			if bash_result.get("payload", {}).get("hit", false) and randf() <= _battle_manager.SHIELD_BASH_STUN_CHANCE:
 				var target_bash = _battle_manager.get_actor_by_id(targets[0])
 				if target_bash != null:
 					target_bash.add_status(StatusEffectFactory.stun(1))
@@ -399,15 +413,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
-			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2))
+			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
 		ActionIds.BOS_TENDRIL_LASH:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
-			var lash_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 0.8))
+			var lash_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 0.8), action.get("tags", []))
 			var target_lash = _battle_manager.get_actor_by_id(targets[0])
-			if target_lash != null:
+			if target_lash != null and lash_result.get("payload", {}).get("hit", false):
 				target_lash.add_status(StatusEffectFactory.poison())
 				_battle_manager.add_message(target_lash.display_name + " is poisoned!")
 			return lash_result
@@ -445,7 +459,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
-			var rage_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, 1.2)
+			var rage_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, 1.2, action.get("tags", []))
 			var total_rage = 0
 			for hit in rage_hits:
 				total_rage += int(hit)
@@ -476,6 +490,21 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 
 		_:
 			return ActionResult.new(false, "unknown_action").to_dict()
+
+
+func _ignores_evasion(action_tags: Array) -> bool:
+	return action_tags.has(ActionTags.IGNORES_EVASION)
+
+
+func _is_attack_evaded(_attacker: Character, target: Character) -> bool:
+	if target == null:
+		return false
+	if not target.has_method("get_evasion_chance"):
+		return false
+	var evasion = target.get_evasion_chance()
+	if evasion <= 0.0:
+		return false
+	return randf() <= evasion
 
 
 func _apply_damage_with_limit(attacker: Character, target: Character, amount: int) -> void:

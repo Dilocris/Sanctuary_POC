@@ -12,6 +12,7 @@ class_name ActorData
 	"spd": 0
 }
 @export var resources: Dictionary = {}
+@export var status_effects: Array = []
 @export var position: Vector2 = Vector2.ZERO
 @export var color: Color = Color.WHITE
 @export var is_boss: bool = false

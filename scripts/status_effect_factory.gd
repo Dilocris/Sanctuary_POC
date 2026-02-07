@@ -58,3 +58,7 @@ static func genies_wrath(charges: int = 3) -> StatusEffect:
 static func inspire_attack(turns: int = 1) -> StatusEffect:
 	# Next attack deals +1d8 damage, consume on use.
 	return StatusEffect.new(StatusEffectIds.INSPIRE_ATTACK, turns, 0, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
+static func patient_defense() -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.PATIENT_DEFENSE, -1, 15, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])

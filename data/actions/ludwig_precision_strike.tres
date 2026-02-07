@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 action_id = "ludwig_precision_strike"
-tags = ["PHYSICAL", "RESOURCE", "SINGLE"]
+tags = ["PHYSICAL", "RESOURCE", "SINGLE", "IGNORES_EVASION"]
 mp_cost = 0
 resource_type = "superiority_dice"
 resource_cost = 1

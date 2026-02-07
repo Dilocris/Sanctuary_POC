@@ -860,6 +860,7 @@ func _actor_data_to_dict(data: Resource) -> Dictionary:
 		"display_name": _dict_get(raw, "display_name", ""),
 		"stats": DataCloneUtil.dict(_dict_get(raw, "stats", {})),
 		"resources": DataCloneUtil.dict(_dict_get(raw, "resources", {})),
+		"status_effects": DataCloneUtil.array(_dict_get(raw, "status_effects", [])),
 		"position": position,
 		"color": _dict_get(raw, "color", Color.WHITE),
 		"phase": _dict_get(raw, "phase", 1)
