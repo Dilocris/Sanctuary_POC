@@ -3,13 +3,13 @@ class_name DamageCalculator
 
 static var damage_multiplier: float = 1.0
 
-const BASE_CRIT_CHANCE := 0.05
 const GUARD_STANCE_DEF_MULTIPLIER := 1.5
 const MAGE_ARMOR_DEF_MULTIPLIER := 1.5
 const GUARD_STANCE_DAMAGE_REDUCTION := 0.5
 const DEFENSE_FACTOR := 0.5
 const VARIANCE_MIN := 0.90
 const VARIANCE_MAX := 1.10
+const BASE_CRIT_CHANCE := 0.05
 const CRIT_MULTIPLIER := 2.0
 
 static func calculate_physical_damage(attacker: Node, defender: Node, multiplier: float) -> int:
@@ -29,10 +29,6 @@ static func calculate_physical_damage(attacker: Node, defender: Node, multiplier
 		defense *= MAGE_ARMOR_DEF_MULTIPLIER
 	var base = (atk * multiplier) - (defense * DEFENSE_FACTOR)
 	var variance = base * randf_range(VARIANCE_MIN, VARIANCE_MAX)
-
-	var crit = randf() <= BASE_CRIT_CHANCE
-	if crit:
-		variance *= CRIT_MULTIPLIER
 
 	if attacker.has_status(StatusEffectIds.FIRE_IMBUE):
 		variance += randi_range(1, 4)
