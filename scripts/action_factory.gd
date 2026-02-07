@@ -120,7 +120,7 @@ static func _legacy_template(action_id: String) -> Dictionary:
 		ActionIds.LUD_LUNGING:
 			return {"action_id": ActionIds.LUD_LUNGING, "multiplier": 1.2, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.PHYSICAL, ActionTags.RESOURCE, ActionTags.SINGLE]}
 		ActionIds.LUD_PRECISION:
-			return {"action_id": ActionIds.LUD_PRECISION, "multiplier": 1.2, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.PHYSICAL, ActionTags.RESOURCE, ActionTags.SINGLE]}
+			return {"action_id": ActionIds.LUD_PRECISION, "multiplier": 1.2, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.PHYSICAL, ActionTags.RESOURCE, ActionTags.SINGLE, ActionTags.IGNORES_EVASION]}
 		ActionIds.LUD_SHIELD_BASH:
 			return {"action_id": ActionIds.LUD_SHIELD_BASH, "multiplier": 1.0, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.PHYSICAL, ActionTags.RESOURCE, ActionTags.SINGLE, ActionTags.STATUS]}
 		ActionIds.LUD_RALLY:

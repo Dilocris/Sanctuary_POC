@@ -148,9 +148,9 @@ func add_message(text: String) -> void:
 	emit_signal("message_added", text)
 
 
-func execute_basic_attack(attacker_id: String, target_id: String, multiplier: float = 1.0) -> Dictionary:
+func execute_basic_attack(attacker_id: String, target_id: String, multiplier: float = 1.0, action_tags: Array = []) -> Dictionary:
 	_ensure_action_resolver()
-	return action_resolver.execute_basic_attack(attacker_id, target_id, multiplier)
+	return action_resolver.execute_basic_attack(attacker_id, target_id, multiplier, action_tags)
 
 
 func enqueue_action(action: Dictionary) -> void:
@@ -230,10 +230,10 @@ func process_end_of_turn_effects(actor: Character) -> void:
 	status_processor.process_end_of_turn_effects(actor)
 
 
-func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multiplier: float) -> Array:
+func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multiplier: float, action_tags: Array = []) -> Array:
 	var damages: Array = []
 	for _i in range(hits):
-		var result = execute_basic_attack(attacker_id, target_id, multiplier)
+		var result = execute_basic_attack(attacker_id, target_id, multiplier, action_tags)
 		damages.append(result.get("payload", {}).get("damage", 0))
 	return damages
 

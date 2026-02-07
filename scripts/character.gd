@@ -20,7 +20,8 @@ var stats := {
 	"atk": 0,
 	"def": 0,
 	"mag": 0,
-	"spd": 0
+	"spd": 0,
+	"evasion": 0.05
 }
 
 var hp_current: int = 1
@@ -102,6 +103,12 @@ func can_use_action(action: Dictionary) -> bool:
 	if mp_cost > 0 and mp_current < mp_cost:
 		return false
 	return true
+
+
+func get_evasion_chance() -> float:
+	var base = float(stats.get("evasion", 0.0))
+	var bonus = _get_status_evasion_bonus()
+	return clamp(base + bonus, 0.0, 0.95)
 
 
 func consume_resources(action: Dictionary) -> void:
@@ -189,3 +196,17 @@ func _get_status_id(status: Variant) -> String:
 	if status is Dictionary:
 		return status.get("id", "")
 	return ""
+
+
+func _get_status_evasion_bonus() -> float:
+	var bonus = 0.0
+	for status in status_effects:
+		var status_id = _get_status_id(status)
+		if status_id == StatusEffectIds.PATIENT_DEFENSE:
+			var value = 0.0
+			if status is StatusEffect:
+				value = float(status.value) / 100.0
+			elif status is Dictionary:
+				value = float(status.get("value", 0)) / 100.0
+			bonus += value
+	return bonus
