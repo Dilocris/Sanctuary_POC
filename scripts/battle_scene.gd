@@ -33,7 +33,6 @@ var actor_root_positions: Dictionary = {}
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
-var state = "BATTLE_START" # BATTLE_START, PLAYER_TURN, ENEMY_TURN, BATTLE_END
 var active_player_id = ""
 var battle_over: bool = false
 var pending_enemy_action: Dictionary = {}
@@ -246,6 +245,7 @@ func _ready() -> void:
 		animation_controller.register_attack_spritesheet(actor_id, renderer.ATTACK_SPRITESHEETS[actor_id])
 
 	battle_manager.setup_state(party, enemies)
+	battle_manager.advance_state(BattleManager.BattleState.BATTLE_INIT)
 
 	# Initialize boss HP bar with current values (no animation on first display)
 	if boss_hp_bar:
@@ -258,18 +258,6 @@ func _ready() -> void:
 	if settings_menu:
 		settings_menu.populate_debug_party()
 
-	battle_manager.start_round()
-	var order = _dict_get(battle_manager.battle_state, "turn_order", [])
-	_on_turn_order_updated(order) # Force UI update
-	_start_global_idle_all()
-	
-	# Removed Demo Status Effects (Poison/Regen) 
-	
-	_update_status_label([
-		"Battle Start!",
-		"Turn order: " + str(order)
-	])
-	
 	# Start loop
 	_process_turn_loop()
 
@@ -449,6 +437,7 @@ func _show_action_visuals(payload: Dictionary) -> void:
 
 func _on_battle_ended(result: String) -> void:
 	battle_over = true
+	battle_manager.advance_state(BattleManager.BattleState.BATTLE_END)
 	_update_status_label(["Battle ended: " + result])
 	# Clean up all tweens on battle end
 	for actor_id in actor_sprites.keys():
@@ -475,7 +464,7 @@ func _show_phase_overlay(phase: int) -> void:
 	ui_manager.show_phase_overlay(phase)
 
 func _on_phase_overlay_finished() -> void:
-	if state == "PLAYER_TURN":
+	if battle_manager.battle_state.state == BattleManager.BattleState.ACTION_SELECT and _is_party_member(active_player_id):
 		input_locked = false
 		var actor = battle_manager.get_actor_by_id(active_player_id)
 		if actor:
@@ -507,43 +496,71 @@ func _compact_order(order: Array) -> String:
 func _process_turn_loop() -> void:
 	if battle_over:
 		return
-	if _dict_get(battle_manager.battle_state, "turn_order", []).is_empty():
-		return
+	var current_state = battle_manager.battle_state.state
+	match current_state:
+		BattleManager.BattleState.BATTLE_INIT:
+			battle_manager.start_round()
+			var order = _dict_get(battle_manager.battle_state, "turn_order", [])
+			_on_turn_order_updated(order)
+			_start_global_idle_all()
+			_update_status_label([
+				"Battle Start!",
+				"Turn order: " + str(order)
+			])
+			battle_manager.advance_state(BattleManager.BattleState.ROUND_INIT)
+			_process_turn_loop()
+		BattleManager.BattleState.ROUND_INIT:
+			battle_manager.advance_state(BattleManager.BattleState.TURN_START)
+			_process_turn_loop()
+		BattleManager.BattleState.TURN_START:
+			if _dict_get(battle_manager.battle_state, "turn_order", []).is_empty():
+				return
 
-	var actor_id = _dict_get(battle_manager.battle_state, "active_character_id", "")
-	var actor = battle_manager.get_actor_by_id(actor_id)
-	
-	if actor == null or actor.is_ko():
-		battle_manager.advance_turn()
-		await get_tree().create_timer(0.5).timeout
-		_process_turn_loop()
-		return
-		
-	active_player_id = actor_id
-	
-	if _is_party_member(actor_id):
-		state = "PLAYER_TURN"
-		message_log("Player turn: " + actor.display_name)
-		_apply_input_cooldown(250)
-		input_locked = false
-		battle_menu.set_enabled(true)
-		battle_menu.setup(actor)
-		_update_menu_disables(actor)
-		target_cursor.deactivate()
-		# Wait for signal
-	else:
-		state = "ENEMY_TURN"
-		message_log("Enemy turn: " + actor.display_name)
-		_apply_input_cooldown(250)
-		input_locked = true
-		battle_menu.set_enabled(false)
-		target_cursor.deactivate()
-		await _telegraph_enemy_intent(actor)
-		_execute_enemy_turn(actor)
+			var actor_id = _dict_get(battle_manager.battle_state, "active_character_id", "")
+			var actor = battle_manager.get_actor_by_id(actor_id)
+
+			if actor == null or actor.is_ko():
+				battle_manager.advance_turn()
+				await get_tree().create_timer(0.5).timeout
+				battle_manager.advance_state(BattleManager.BattleState.TURN_START)
+				_process_turn_loop()
+				return
+
+			active_player_id = actor_id
+			battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
+			_process_turn_loop()
+		BattleManager.BattleState.ACTION_SELECT:
+			if _is_party_member(active_player_id):
+				var actor = battle_manager.get_actor_by_id(active_player_id)
+				if actor == null:
+					return
+				message_log("Player turn: " + actor.display_name)
+				_apply_input_cooldown(250)
+				input_locked = false
+				battle_menu.set_enabled(true)
+				battle_menu.setup(actor)
+				_update_menu_disables(actor)
+				target_cursor.deactivate()
+				return
+
+			var enemy_actor = battle_manager.get_actor_by_id(active_player_id)
+			if enemy_actor == null:
+				return
+			message_log("Enemy turn: " + enemy_actor.display_name)
+			_apply_input_cooldown(250)
+			input_locked = true
+			battle_menu.set_enabled(false)
+			target_cursor.deactivate()
+			await _telegraph_enemy_intent(enemy_actor)
+			_execute_enemy_turn(enemy_actor)
+		_:
+			return
 
 func _execute_enemy_turn(actor: Boss) -> void:
 	# Skip turn if AI is disabled via debug menu
 	if battle_manager.battle_state.flags.get("ai_disabled", false):
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_VALIDATE)
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_COMMIT)
 		battle_manager.enqueue_action(ActionFactory.skip_turn(actor.id))
 		pending_enemy_action = {}
 		_execute_next_action()
@@ -556,8 +573,12 @@ func _execute_enemy_turn(actor: Boss) -> void:
 
 	# Enqueue the AI-selected action directly
 	if ai_action.is_empty():
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_VALIDATE)
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_COMMIT)
 		battle_manager.enqueue_action(ActionFactory.skip_turn(actor.id))
 	else:
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_VALIDATE)
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_COMMIT)
 		battle_manager.enqueue_action(ai_action)
 
 	pending_enemy_action = {}
@@ -658,6 +679,8 @@ func _enqueue_and_execute(action_id: String, target_ids: Array) -> void:
 	# For now, I'll implement a helper `_create_action_dict` here.
 	
 	var action = _create_action_dict(action_id, active_player_id, target_ids)
+	battle_manager.advance_state(BattleManager.BattleState.ACTION_VALIDATE)
+	battle_manager.advance_state(BattleManager.BattleState.ACTION_COMMIT)
 	battle_manager.enqueue_action(action)
 	_execute_next_action()
 
@@ -742,6 +765,7 @@ func _update_menu_disables(actor: Character) -> void:
 	battle_menu.set_disabled_actions(disabled)
 
 func _execute_next_action() -> void:
+	battle_manager.advance_state(BattleManager.BattleState.ACTION_RESOLVE)
 	var result = battle_manager.process_next_action()
 	var payload = _dict_get(result, "payload", result)
 	message_log("Action Result: " + str(payload))
@@ -766,14 +790,23 @@ func _execute_next_action() -> void:
 		input_locked = false
 		battle_menu.setup(actor)
 		_update_menu_disables(actor)
+		battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
 		return
 	
 	if battle_over:
 		message_log("Battle Ended!")
+		battle_manager.advance_state(BattleManager.BattleState.BATTLE_END)
 		return
-		
+
+	battle_manager.advance_state(BattleManager.BattleState.TURN_END)
+	var previous_turn_count = battle_manager.battle_state.turn_count
 	battle_manager.advance_turn()
 	await get_tree().create_timer(0.9).timeout
+	if battle_manager.battle_state.turn_count > previous_turn_count:
+		battle_manager.advance_state(BattleManager.BattleState.ROUND_END)
+		battle_manager.advance_state(BattleManager.BattleState.ROUND_INIT)
+	else:
+		battle_manager.advance_state(BattleManager.BattleState.TURN_START)
 	_process_turn_loop()
 
 func message_log(msg: String) -> void:
