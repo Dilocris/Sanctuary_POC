@@ -27,7 +27,6 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 		damage += bonus_dmg
 	_apply_damage_with_limit(attacker, target, damage)
 	_battle_manager.add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
-	_try_riposte(attacker, target)
 	return ActionResult.new(true, "", {
 		"damage": damage,
 		"bonus": bonus_dmg,

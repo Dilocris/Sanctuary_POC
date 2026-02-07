@@ -21,6 +21,7 @@ var battle_state := {
 	"turn_order": [],
 	"message_log": [],
 	"action_queue": [],
+	"reaction_queue": [],
 	"action_log": [],
 	"flags": {}
 }
@@ -28,8 +29,10 @@ var battle_state := {
 # O(1) actor lookup cache
 var _actor_lookup: Dictionary = {}
 var action_resolver: ActionResolver
+var reaction_resolver: ReactionResolver
 var turn_manager: TurnManager
 var status_processor: StatusProcessor
+var _reaction_sequence := 0
 
 const TURN_ORDER_RANDOM_MIN := 0
 const TURN_ORDER_RANDOM_MAX := 5
@@ -80,7 +83,9 @@ func setup_state(party: Array, enemies: Array) -> void:
 	battle_state.turn_order = []
 	battle_state.message_log = []
 	battle_state.action_queue = []
+	battle_state.reaction_queue = []
 	battle_state.action_log = []
+	_reaction_sequence = 0
 	battle_state.flags = {
 		"ludwig_second_wind_used": false,
 		"ninos_counterspell_used": false,
@@ -94,6 +99,7 @@ func setup_state(party: Array, enemies: Array) -> void:
 	}
 	_build_actor_lookup()
 	_ensure_action_resolver()
+	_ensure_reaction_resolver()
 	_ensure_turn_manager()
 	_ensure_status_processor()
 
@@ -108,6 +114,12 @@ func _ensure_turn_manager() -> void:
 	if turn_manager == null:
 		turn_manager = TurnManager.new()
 		turn_manager.setup(self)
+
+
+func _ensure_reaction_resolver() -> void:
+	if reaction_resolver == null:
+		reaction_resolver = ReactionResolver.new()
+		reaction_resolver.setup(self)
 
 
 func _ensure_status_processor() -> void:
@@ -172,6 +184,8 @@ func process_next_action() -> Dictionary:
 		return invalid_result
 	var result = _resolve_action(action)
 	result["action_id"] = action.get("action_id", "")
+	_trigger_reaction_window(action, result)
+	_execute_reaction_queue()
 	battle_state.action_log.append({"type": "executed", "result": result})
 	emit_signal("action_executed", result)
 	if result.get("ok", false):
@@ -183,6 +197,52 @@ func process_next_action() -> Dictionary:
 func _resolve_action(action: Dictionary) -> Dictionary:
 	_ensure_action_resolver()
 	return action_resolver._resolve_action(action)
+
+
+func _trigger_reaction_window(action: Dictionary, result: Dictionary) -> void:
+	_ensure_reaction_resolver()
+	battle_state.reaction_queue.clear()
+	reaction_resolver.queue_reactions(action, result)
+
+
+func enqueue_reaction(reaction: Dictionary) -> void:
+	reaction["sequence"] = _reaction_sequence
+	_reaction_sequence += 1
+	battle_state.reaction_queue.append(reaction)
+
+
+func _execute_reaction_queue() -> void:
+	if battle_state.reaction_queue.is_empty():
+		return
+	battle_state.reaction_queue.sort_custom(func(a, b):
+		if a.priority == b.priority:
+			return a.sequence < b.sequence
+		return a.priority > b.priority
+	)
+	while not battle_state.reaction_queue.is_empty():
+		var entry = battle_state.reaction_queue.pop_front()
+		_resolve_reaction(entry)
+
+
+func _resolve_reaction(entry: Dictionary) -> void:
+	var reaction_id = entry.get("reaction_id", "")
+	match reaction_id:
+		"counterspell_sense":
+			add_message(entry.get("log_message", ""))
+		"riposte":
+			var attacker = get_actor_by_id(entry.get("actor_id", ""))
+			var target = get_actor_by_id(entry.get("target_id", ""))
+			if attacker == null or target == null:
+				return
+			if attacker.is_ko() or target.is_ko():
+				return
+			var damage = DamageCalculator.calculate_physical_damage(attacker, target, entry.get("multiplier", 0.6))
+			_apply_damage_with_limit(attacker, target, damage)
+			add_message("Riposte! " + attacker.display_name + " counters for " + str(damage) + " damage.")
+		_:
+			var log_message = entry.get("log_message", "")
+			if log_message != "":
+				add_message(log_message)
 
 
 func _validate_action(action: Dictionary) -> Dictionary:
