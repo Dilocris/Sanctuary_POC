@@ -73,6 +73,11 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.NINOS_LIMIT: "Siren's Call",
 	ActionIds.CAT_LIMIT: "Genie's Wrath"
 }
+const DIFFICULTY_SETTINGS := {
+	"Story": {"party_hp": 1.15, "enemy_hp": 0.85, "reward": 0.85},
+	"Normal": {"party_hp": 1.0, "enemy_hp": 1.0, "reward": 1.0},
+	"Hard": {"party_hp": 0.9, "enemy_hp": 1.2, "reward": 1.2}
+}
 
 enum BattleState {
 	BATTLE_INIT,
@@ -101,7 +106,7 @@ const BATTLE_STATE_LABELS := {
 }
 
 
-func setup_state(party: Array, enemies: Array) -> void:
+func setup_state(party: Array, enemies: Array, difficulty: String = "Normal") -> void:
 	battle_state.phase = 1
 	battle_state.state = BattleState.BATTLE_INIT
 	battle_state.turn_count = 0
@@ -123,8 +128,10 @@ func setup_state(party: Array, enemies: Array) -> void:
 		"marcus_pull_target": "",
 		"marcus_turn_index": 0,
 		"boss_cooldowns": {},
-		"boss_phase_announced": 1
+		"boss_phase_announced": 1,
+		"difficulty": difficulty
 	}
+	_apply_difficulty_scaling(difficulty)
 	_build_actor_lookup()
 	_ensure_action_resolver()
 	_ensure_reaction_resolver()
@@ -143,6 +150,48 @@ func _get_state_label(state_id: int) -> String:
 	if BATTLE_STATE_LABELS.has(state_id):
 		return BATTLE_STATE_LABELS[state_id]
 	return str(state_id)
+
+
+func get_rewards_summary() -> Dictionary:
+	var reward_mult = _get_difficulty_reward_multiplier()
+	var exp_total := 0
+	var gil_total := 0
+	var items: Array = []
+	for enemy in battle_state.enemies:
+		var hp_max = int(enemy.stats.get("hp_max", 0))
+		exp_total += int(round(hp_max / 10.0))
+		gil_total += 25
+		if enemy is Boss:
+			items.append("Boss Sigil")
+	if items.is_empty():
+		items.append("Potion")
+	exp_total = int(round(exp_total * reward_mult))
+	gil_total = int(round(gil_total * reward_mult))
+	return {
+		"exp": exp_total,
+		"gil": gil_total,
+		"items": items
+	}
+
+
+func _apply_difficulty_scaling(difficulty: String) -> void:
+	var settings = DIFFICULTY_SETTINGS.get(difficulty, DIFFICULTY_SETTINGS["Normal"])
+	_apply_hp_scaling(battle_state.party, settings.get("party_hp", 1.0))
+	_apply_hp_scaling(battle_state.enemies, settings.get("enemy_hp", 1.0))
+
+
+func _apply_hp_scaling(actors: Array, multiplier: float) -> void:
+	for actor in actors:
+		var base_max = int(actor.stats.get("hp_max", 1))
+		var scaled_max = max(1, int(round(base_max * multiplier)))
+		actor.stats["hp_max"] = scaled_max
+		actor.hp_current = scaled_max
+
+
+func _get_difficulty_reward_multiplier() -> float:
+	var difficulty = battle_state.flags.get("difficulty", "Normal")
+	var settings = DIFFICULTY_SETTINGS.get(difficulty, DIFFICULTY_SETTINGS["Normal"])
+	return float(settings.get("reward", 1.0))
 
 
 func _ensure_action_resolver() -> void:
