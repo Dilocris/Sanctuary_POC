@@ -20,6 +20,7 @@ static func create_action(action_id: String, actor_id: String, targets: Array) -
 		ActionIds.LUD_PRECISION: return ludwig_precision_strike(actor_id, t1)
 		ActionIds.LUD_SHIELD_BASH: return ludwig_shield_bash(actor_id, t1)
 		ActionIds.LUD_RALLY: return ludwig_rally(actor_id, t1)
+		ActionIds.LUD_TAUNT: return ludwig_taunt(actor_id)
 		# Ninos
 		ActionIds.NINOS_BLESS: return ninos_bless(actor_id, targets)
 		ActionIds.NINOS_HEALING_WORD: return ninos_healing_word(actor_id, t1)
@@ -125,6 +126,8 @@ static func _legacy_template(action_id: String) -> Dictionary:
 			return {"action_id": ActionIds.LUD_SHIELD_BASH, "multiplier": 1.0, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.PHYSICAL, ActionTags.RESOURCE, ActionTags.SINGLE, ActionTags.STATUS]}
 		ActionIds.LUD_RALLY:
 			return {"action_id": ActionIds.LUD_RALLY, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.HEALING, ActionTags.RESOURCE, ActionTags.SINGLE]}
+		ActionIds.LUD_TAUNT:
+			return {"action_id": ActionIds.LUD_TAUNT, "resource_type": "superiority_dice", "resource_cost": 1, "tags": [ActionTags.BUFF, ActionTags.RESOURCE, ActionTags.SELF]}
 		ActionIds.NINOS_INSPIRE_ATTACK:
 			return {"action_id": ActionIds.NINOS_INSPIRE_ATTACK, "resource_type": "bardic_inspiration", "resource_cost": 1, "tags": [ActionTags.BUFF, ActionTags.RESOURCE, ActionTags.SINGLE]}
 		ActionIds.NINOS_VICIOUS_MOCKERY:
@@ -212,6 +215,10 @@ static func ludwig_shield_bash(actor_id: String, target_id: String) -> Dictionar
 
 static func ludwig_rally(actor_id: String, target_id: String) -> Dictionary:
 	return _build_action(ActionIds.LUD_RALLY, actor_id, [target_id])
+
+
+static func ludwig_taunt(actor_id: String) -> Dictionary:
+	return _build_action(ActionIds.LUD_TAUNT, actor_id, [actor_id])
 
 
 static func ninos_inspire_attack(actor_id: String, target_id: String) -> Dictionary:

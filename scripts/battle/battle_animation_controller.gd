@@ -110,6 +110,7 @@ func spawn_damage_numbers(target_id: String, damages: Array) -> void:
 const HEAVY_DAMAGE_THRESHOLD := 50
 const NORMAL_DAMAGE_FONT := 32
 const HEAVY_DAMAGE_FONT := 44
+const MISS_FONT := 30
 
 func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> void:
 	var is_heavy = damage_value >= HEAVY_DAMAGE_THRESHOLD
@@ -133,6 +134,32 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 		tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(label.queue_free)
+
+
+func spawn_miss_text(target_id: String) -> void:
+	var actor = _battle_manager.get_actor_by_id(target_id)
+	if actor == null:
+		return
+	create_miss_text(actor.position)
+
+
+func create_miss_text(pos: Vector2) -> void:
+	var label = Label.new()
+	label.text = "MISS"
+	label.modulate = Color(0.9, 0.95, 1.0)
+	label.position = pos + Vector2(0, -64)
+	label.add_theme_font_size_override("font_size", MISS_FONT)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 3)
+	_scene_root.add_child(label)
+
+	var tween = _scene_root.create_tween()
+	label.pivot_offset = label.size / 2.0
+	label.scale = Vector2(1.2, 1.2)
+	tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.15).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 45, 0.9)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
 	tween.tween_callback(label.queue_free)
 
 

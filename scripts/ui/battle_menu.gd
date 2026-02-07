@@ -123,6 +123,7 @@ func _build_submenu(category: String) -> void:
 				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Dice. High damage, ignores evasion."})
 				menu_items.append({"label": "Shield Bash", "id": ActionIds.LUD_SHIELD_BASH, "desc": "1 Dice. Strike with chance to stun."})
 				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Dice. Heal an ally."})
+				menu_items.append({"label": "Taunt", "id": ActionIds.LUD_TAUNT, "desc": "1 Dice. Force enemy single-target actions to target Ludwig for 2 turns."})
 		"ninos":
 			if category == "SKILL_SUB":
 				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp. Ally's next attack deals +1d8 bonus dmg."})

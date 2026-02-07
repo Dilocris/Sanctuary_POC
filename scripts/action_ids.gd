@@ -11,6 +11,7 @@ const LUD_LUNGING := "ludwig_lunging_attack"
 const LUD_PRECISION := "ludwig_precision_strike"
 const LUD_SHIELD_BASH := "ludwig_shield_bash"
 const LUD_RALLY := "ludwig_rally"
+const LUD_TAUNT := "ludwig_taunt"
 
 const NINOS_INSPIRE_ATTACK := "ninos_inspire_attack"
 const NINOS_VICIOUS_MOCKERY := "ninos_vicious_mockery"

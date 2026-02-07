@@ -412,6 +412,11 @@ func _show_action_visuals(payload: Dictionary) -> void:
 			total_instances += int(hit)
 		pending_damage_messages.append("Damage: " + str(total_instances))
 	elif payload.has("damage"):
+		if payload.has("hit") and not bool(payload["hit"]):
+			if target:
+				_spawn_miss_text(target_id)
+			pending_damage_messages.append("Miss")
+			return
 		var dmg = payload["damage"]
 		if target:
 			_spawn_damage_numbers(target_id, [dmg])
@@ -771,7 +776,7 @@ func _update_menu_disables(actor: Character) -> void:
 			disabled[id] = "Requires 2+ enemies."
 			continue
 		if actor.id == "ludwig" and actor.has_status(StatusEffectIds.GUARD_STANCE):
-			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
+			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH, ActionIds.LUD_RALLY, ActionIds.LUD_TAUNT]:
 				disabled[id] = "Guard Stance active."
 				continue
 		var tags = _dict_get(action, "tags", [])
@@ -958,6 +963,9 @@ func _is_party_member(actor_id: String) -> bool:
 
 func _spawn_damage_numbers(target_id: String, damages: Array) -> void:
 	animation_controller.spawn_damage_numbers(target_id, damages)
+
+func _spawn_miss_text(target_id: String) -> void:
+	animation_controller.spawn_miss_text(target_id)
 
 func _create_damage_text(pos: Vector2, text: String) -> void:
 	animation_controller.create_damage_text(pos, text)

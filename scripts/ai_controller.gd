@@ -87,6 +87,12 @@ func _phase_three_action(boss: Boss, battle_state: Dictionary) -> Dictionary:
 
 
 func _select_highest_threat(party: Array) -> String:
+	var taunt_target = _select_taunt_target(party)
+	if taunt_target != "":
+		return taunt_target
+	var guard_target = _select_guard_stance_target(party)
+	if guard_target != "":
+		return guard_target
 	var ludwig = _find_by_id(party, "ludwig")
 	var ludwig_in_guard = ludwig != null and ludwig.has_status(StatusEffectIds.GUARD_STANCE)
 	var best_id = ""
@@ -94,7 +100,7 @@ func _select_highest_threat(party: Array) -> String:
 	for member in party:
 		if member.hp_current <= 0:
 			continue
-		# Skip Ludwig when he's in Guard Stance (drawing aggro away from party)
+		# Guard Stance target forcing is handled before this loop.
 		if member.id == "ludwig" and ludwig_in_guard:
 			continue
 		var atk = member.stats.get("atk", 0)
@@ -108,6 +114,12 @@ func _select_highest_threat(party: Array) -> String:
 
 
 func _select_grasp_target(party: Array) -> String:
+	var taunt_target = _select_taunt_target(party)
+	if taunt_target != "":
+		return taunt_target
+	var guard_target = _select_guard_stance_target(party)
+	if guard_target != "":
+		return guard_target
 	var candidates: Array = []
 	var ludwig = _find_by_id(party, "ludwig")
 	for member in party:
@@ -122,6 +134,12 @@ func _select_grasp_target(party: Array) -> String:
 
 
 func _select_random(party: Array) -> String:
+	var taunt_target = _select_taunt_target(party)
+	if taunt_target != "":
+		return taunt_target
+	var guard_target = _select_guard_stance_target(party)
+	if guard_target != "":
+		return guard_target
 	var candidates: Array = []
 	for member in party:
 		if member.hp_current > 0:
@@ -129,6 +147,22 @@ func _select_random(party: Array) -> String:
 	if candidates.is_empty():
 		return ""
 	return candidates[randi_range(0, candidates.size() - 1)].id
+
+
+func _select_taunt_target(party: Array) -> String:
+	for member in party:
+		if member.hp_current <= 0:
+			continue
+		if member.has_status(StatusEffectIds.TAUNT):
+			return member.id
+	return ""
+
+
+func _select_guard_stance_target(party: Array) -> String:
+	var ludwig = _find_by_id(party, "ludwig")
+	if ludwig != null and ludwig.hp_current > 0 and ludwig.has_status(StatusEffectIds.GUARD_STANCE):
+		return ludwig.id
+	return ""
 
 
 func _find_by_id(party: Array, id: String) -> Character:

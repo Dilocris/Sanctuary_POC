@@ -4,13 +4,19 @@ class_name ActionResolver
 ## ActionResolver - Resolves action dictionaries into combat outcomes
 
 var _battle_manager: BattleManager
+var _pipeline: ActionPipeline
 
 
 func setup(battle_manager: BattleManager) -> void:
 	_battle_manager = battle_manager
+	_pipeline = ActionPipeline.new()
+	_pipeline.setup(battle_manager)
 
 
 func execute_basic_attack(attacker_id: String, target_id: String, multiplier: float = 1.0, action_tags: Array = []) -> Dictionary:
+	if _pipeline == null:
+		_pipeline = ActionPipeline.new()
+		_pipeline.setup(_battle_manager)
 	var attacker = _battle_manager.get_actor_by_id(attacker_id)
 	var target = _battle_manager.get_actor_by_id(target_id)
 	if attacker == null or target == null:
@@ -27,15 +33,29 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 			"target_id": target_id
 		}).to_dict()
 
-	var damage = DamageCalculator.calculate_physical_damage(attacker, target, multiplier)
-	var bonus_dmg = 0
-	if attacker.has_status(StatusEffectIds.INSPIRE_ATTACK):
-		bonus_dmg = randi_range(1, 8)
-		attacker.remove_status(StatusEffectIds.INSPIRE_ATTACK)
-		_battle_manager.add_message(attacker.display_name + " strikes with Inspiration! +" + str(bonus_dmg) + " dmg.")
-		damage += bonus_dmg
-	_apply_damage_with_limit(attacker, target, damage)
-	_battle_manager.add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
+	var action = {
+		"action_id": ActionIds.BASIC_ATTACK,
+		"actor_id": attacker_id,
+		"targets": [target_id],
+		"tags": action_tags
+	}
+	var spec = {
+		"actor_id": attacker_id,
+		"targets": [target_id],
+		"requires_target": true,
+		"damage_mode": "physical",
+		"multiplier": multiplier,
+		"allow_crit": false,
+		"allow_inspire_bonus": true,
+		"log_entries": ["{attacker} attacks {target} for {damage}!"]
+	}
+	var pipeline_result = _pipeline.execute(action, spec)
+	if not pipeline_result.get("ok", false):
+		return pipeline_result
+	var summary = pipeline_result.get("payload", {}).get("summary", {})
+	var damage = int(summary.get("damage_total", 0))
+	var bonus_dmg = int(summary.get("bonus_damage", 0))
+	_apply_fire_imbue_burn(attacker, target)
 	return ActionResult.new(true, "", {
 		"hit": true,
 		"damage": damage,
@@ -105,9 +125,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				if actor.has_status(StatusEffectIds.FIRE_IMBUE):
 					actor.remove_status(StatusEffectIds.FIRE_IMBUE)
+					_battle_manager.battle_state.flags["fire_imbue_skip_drain"] = false
 					_battle_manager.add_message("Fire Imbue toggled off.")
 					return ActionResult.new(true, "", {"toggled": "off"}).to_dict()
 				actor.add_status(StatusEffectFactory.fire_imbue())
+				_battle_manager.battle_state.flags["fire_imbue_skip_drain"] = true
 				_battle_manager.add_message("Fire Imbue toggled on.")
 				return ActionResult.new(true, "", {"toggled": "on"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
@@ -146,7 +168,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			# Precision ignores evasion (not implemented yet), so same as Lunging for now but explicit
+			# Precision ignores evasion through ActionTags.IGNORES_EVASION.
 			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
 			var bonus_prec = 0
 			var total_prec = base_prec.get("payload", {}).get("damage", 0)
@@ -197,6 +219,17 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				"attacker_id": actor_id,
 				"target_id": targets[0]
 			}).to_dict()
+		ActionIds.LUD_TAUNT:
+			if actor != null:
+				actor.consume_resources(action)
+				actor.add_status(StatusEffectFactory.taunt(2))
+				_battle_manager.add_message(actor.display_name + " taunts the enemy and draws its focus!")
+				return ActionResult.new(true, "", {
+					"buff": "taunt",
+					"attacker_id": actor_id,
+					"target_id": actor_id
+				}).to_dict()
+			return ActionResult.new(false, "missing_actor").to_dict()
 		ActionIds.NINOS_HEALING_WORD:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
@@ -294,6 +327,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var meta_fb = _battle_manager.consume_metamagic(actor_id)
 			var total_dmg_fireball = 0
 			var hit_targets = []
+			var multi_target_damage: Array = []
 			for t_id in targets:
 				var t_fireball = _battle_manager.get_actor_by_id(t_id)
 				if t_fireball != null:
@@ -304,10 +338,12 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					dmg_val = _battle_manager._apply_bless_bonus(actor, dmg_val)
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
+					multi_target_damage.append({"target_id": t_id, "damage": dmg_val})
 					total_dmg_fireball += dmg_val
 			_battle_manager.add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
 			return ActionResult.new(true, "", {
 				"damage_total": total_dmg_fireball,
+				"multi_target_damage": multi_target_damage,
 				"targets_hit": hit_targets.size(),
 				"attacker_id": actor_id,
 				"quicken": meta_fb == "QUICKEN"
@@ -474,6 +510,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
 			var total = 0
 			var hit_targets: Array = []
+			var venom_multi_dmg: Array = []
 			for t_id in targets:
 				var t = _battle_manager.get_actor_by_id(t_id)
 				if t != null:
@@ -481,9 +518,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					_apply_damage_with_limit(actor, t, dmg)
 					t.add_status(StatusEffectFactory.poison())
 					hit_targets.append(t_id)
+					venom_multi_dmg.append({"target_id": t_id, "damage": dmg})
 					total += dmg
 			return ActionResult.new(true, "", {
 				"damage_total": total,
+				"multi_target_damage": venom_multi_dmg,
 				"targets_hit": hit_targets.size(),
 				"attacker_id": actor_id
 			}).to_dict()
@@ -513,6 +552,17 @@ func _apply_damage_with_limit(attacker: Character, target: Character, amount: in
 	target.apply_damage(amount)
 	_battle_manager._update_limit_gauges(attacker, target, amount)
 	_battle_manager._check_boss_phase_transition(target)
+
+
+func _apply_fire_imbue_burn(attacker: Character, target: Character) -> void:
+	if attacker == null or target == null:
+		return
+	if not attacker.has_status(StatusEffectIds.FIRE_IMBUE):
+		return
+	if target.has_status(StatusEffectIds.BURN):
+		return
+	target.add_status(StatusEffectFactory.burn())
+	_battle_manager.add_message(target.display_name + " is burning!")
 
 
 func _try_riposte(attacker: Character, defender: Character) -> void:

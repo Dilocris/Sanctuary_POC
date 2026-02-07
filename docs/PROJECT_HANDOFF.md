@@ -24,6 +24,12 @@ QUICK REFERENCE:
 ## Date: 2026-02-03
 ## Status: Phase 3 Logic Implemented + Phase 4 UI/Feedback Polish In Progress
 
+### Procedure Update (Parser Safety)
+- After **any** `.gd` edit, run:
+  - `powershell -ExecutionPolicy Bypass -File scripts/dev/check_gdscript_sanity.ps1`
+- This check blocks handoff if it finds merge markers or split GDScript keywords (example: `i  f`) that cause class parse failures.
+- If Godot CLI is available locally, also run a headless parse/open to confirm script load before commit.
+
 ### 1. Completed Features
 - **Ludwig Von Tannhauser**:
   - `Guard Stance` (Toggle, Status Logic)

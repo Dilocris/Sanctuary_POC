@@ -62,3 +62,7 @@ static func inspire_attack(turns: int = 1) -> StatusEffect:
 
 static func patient_defense() -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.PATIENT_DEFENSE, -1, 15, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
+static func taunt(turns: int = 2) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.TAUNT, turns, 0, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])

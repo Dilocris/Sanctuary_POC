@@ -61,6 +61,7 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.LUD_PRECISION: "Precision Strike",
 	ActionIds.LUD_SHIELD_BASH: "Shield Bash",
 	ActionIds.LUD_RALLY: "Rally",
+	ActionIds.LUD_TAUNT: "Taunt",
 	ActionIds.NINOS_VICIOUS_MOCKERY: "Vicious Mockery",
 	ActionIds.NINOS_HEALING_WORD: "Healing Word",
 	ActionIds.NINOS_BLESS: "Bless",
@@ -123,6 +124,7 @@ func setup_state(party: Array, enemies: Array, difficulty: String = "Normal") ->
 		"ludwig_second_wind_used": false,
 		"ninos_counterspell_used": false,
 		"quicken_used_this_round": false,
+		"fire_imbue_skip_drain": false,
 		"ai_disabled": false,
 		"metamagic": {},
 		"marcus_pull_target": "",
@@ -153,13 +155,18 @@ func _get_state_label(state_id: int) -> String:
 
 
 func get_rewards_summary() -> Dictionary:
-	var reward_mult = _get_difficulty_reward_multiplier()
+	var settings = _get_difficulty_settings()
+	var reward_mult = float(settings.get("reward", 1.0))
+	var enemy_hp_mult = float(settings.get("enemy_hp", 1.0))
 	var exp_total := 0
 	var gil_total := 0
 	var items: Array = []
 	for enemy in battle_state.enemies:
-		var hp_max = int(enemy.stats.get("hp_max", 0))
-		exp_total += int(round(hp_max / 10.0))
+		var scaled_hp_max = int(enemy.stats.get("hp_max", 0))
+		var base_hp_max = scaled_hp_max
+		if enemy_hp_mult > 0.0:
+			base_hp_max = int(round(float(scaled_hp_max) / enemy_hp_mult))
+		exp_total += int(round(float(base_hp_max) / 10.0))
 		gil_total += 25
 		if enemy is Boss:
 			items.append("Boss Sigil")
@@ -175,7 +182,7 @@ func get_rewards_summary() -> Dictionary:
 
 
 func _apply_difficulty_scaling(difficulty: String) -> void:
-	var settings = DIFFICULTY_SETTINGS.get(difficulty, DIFFICULTY_SETTINGS["Normal"])
+	var settings = _get_difficulty_settings(difficulty)
 	_apply_hp_scaling(battle_state.party, settings.get("party_hp", 1.0))
 	_apply_hp_scaling(battle_state.enemies, settings.get("enemy_hp", 1.0))
 
@@ -189,9 +196,15 @@ func _apply_hp_scaling(actors: Array, multiplier: float) -> void:
 
 
 func _get_difficulty_reward_multiplier() -> float:
-	var difficulty = battle_state.flags.get("difficulty", "Normal")
-	var settings = DIFFICULTY_SETTINGS.get(difficulty, DIFFICULTY_SETTINGS["Normal"])
+	var settings = _get_difficulty_settings()
 	return float(settings.get("reward", 1.0))
+
+
+func _get_difficulty_settings(difficulty: String = "") -> Dictionary:
+	var selected = difficulty
+	if selected.is_empty():
+		selected = battle_state.flags.get("difficulty", "Normal")
+	return DIFFICULTY_SETTINGS.get(selected, DIFFICULTY_SETTINGS["Normal"])
 
 
 func _ensure_action_resolver() -> void:
@@ -366,7 +379,7 @@ func _validate_action(action: Dictionary) -> Dictionary:
 	if actor.has_status(StatusEffectIds.GUARD_STANCE):
 		if action.get("action_id", "") == ActionIds.BASIC_ATTACK:
 			return ActionResult.new(false, "guard_stance_restricts").to_dict()
-		if action.get("action_id", "") in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
+		if action.get("action_id", "") in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH, ActionIds.LUD_RALLY, ActionIds.LUD_TAUNT]:
 			return ActionResult.new(false, "guard_stance_restricts").to_dict()
 	return ActionResult.new(true).to_dict()
 
