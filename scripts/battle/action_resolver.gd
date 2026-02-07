@@ -27,6 +27,10 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 		damage += bonus_dmg
 	_apply_damage_with_limit(attacker, target, damage)
 	_battle_manager.add_message(attacker.display_name + " attacks " + target.display_name + " for " + str(damage) + "!")
+	# Fire Imbue: apply Burn DOT if target doesn't already have it
+	if attacker.has_status(StatusEffectIds.FIRE_IMBUE) and not target.has_status(StatusEffectIds.BURN):
+		target.add_status(StatusEffectFactory.burn())
+		_battle_manager.add_message(target.display_name + " is burning!")
 	_try_riposte(attacker, target)
 	return ActionResult.new(true, "", {
 		"damage": damage,
@@ -62,6 +66,12 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action)
 			var flurry_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0))
+			# Fire Imbue: apply Burn on first hit
+			if actor != null and actor.has_status(StatusEffectIds.FIRE_IMBUE):
+				var flurry_target = _battle_manager.get_actor_by_id(targets[0])
+				if flurry_target != null and not flurry_target.has_status(StatusEffectIds.BURN):
+					flurry_target.add_status(StatusEffectFactory.burn())
+					_battle_manager.add_message(flurry_target.display_name + " is burning!")
 			var flurry_total = 0
 			for hit in flurry_hits:
 				flurry_total += int(hit)
@@ -99,6 +109,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					_battle_manager.add_message("Fire Imbue toggled off.")
 					return ActionResult.new(true, "", {"toggled": "off"}).to_dict()
 				actor.add_status(StatusEffectFactory.fire_imbue())
+				_battle_manager.battle_state.flags["fire_imbue_skip_drain"] = true
 				_battle_manager.add_message("Fire Imbue toggled on.")
 				return ActionResult.new(true, "", {"toggled": "on"}).to_dict()
 			return ActionResult.new(false, "missing_actor").to_dict()
@@ -281,22 +292,24 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var meta_fb = _battle_manager.consume_metamagic(actor_id)
 			var total_dmg_fireball = 0
 			var hit_targets = []
+			var multi_target_damage = []
 			for t_id in targets:
 				var t_fireball = _battle_manager.get_actor_by_id(t_id)
 				if t_fireball != null:
-					var dmg_val = randi_range(8, 64) # 8d6 roughly
-					# For poc, simple formula:
-					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
+					var dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
 					dmg_val = _battle_manager._apply_genies_wrath_bonus(actor, dmg_val)
 					dmg_val = _battle_manager._apply_bless_bonus(actor, dmg_val)
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
+					multi_target_damage.append({"target_id": t_id, "damage": dmg_val})
 					total_dmg_fireball += dmg_val
 			_battle_manager.add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
 			return ActionResult.new(true, "", {
 				"damage_total": total_dmg_fireball,
+				"multi_target_damage": multi_target_damage,
 				"targets_hit": hit_targets.size(),
 				"attacker_id": actor_id,
+				"element": "fire",
 				"quicken": meta_fb == "QUICKEN"
 			}).to_dict()
 		ActionIds.CAT_MAGE_ARMOR:
@@ -461,6 +474,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
 			var total = 0
 			var hit_targets: Array = []
+			var venom_multi_dmg = []
 			for t_id in targets:
 				var t = _battle_manager.get_actor_by_id(t_id)
 				if t != null:
@@ -468,9 +482,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					_apply_damage_with_limit(actor, t, dmg)
 					t.add_status(StatusEffectFactory.poison())
 					hit_targets.append(t_id)
+					venom_multi_dmg.append({"target_id": t_id, "damage": dmg})
 					total += dmg
 			return ActionResult.new(true, "", {
 				"damage_total": total,
+				"multi_target_damage": venom_multi_dmg,
 				"targets_hit": hit_targets.size(),
 				"attacker_id": actor_id
 			}).to_dict()

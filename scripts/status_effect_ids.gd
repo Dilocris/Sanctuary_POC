@@ -2,6 +2,7 @@ extends RefCounted
 class_name StatusEffectIds
 
 const POISON := "POISON"
+const BURN := "BURN"
 const STUN := "STUN"
 const CHARM := "CHARM"
 const REGEN := "REGEN"

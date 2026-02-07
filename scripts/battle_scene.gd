@@ -5,7 +5,7 @@ var debug_panel: Control
 var debug_log: RichTextLabel
 var debug_toggle_btn: Button
 
-var party_status_panel: VBoxContainer
+var party_status_panel: Control
 var status_effects_display: Label # Renamed to fit purpose
 var turn_order_display: Label # Visible turn order at top
 var combat_log_display: Label # Toast for battle messages
@@ -143,6 +143,7 @@ func _ready() -> void:
 	# Setup Renderer
 	renderer = BattleRenderer.new()
 	renderer.setup(self)
+	renderer.pixel_font = ui_manager._pixel_font
 	renderer.create_background()
 
 	# Setup Game Feel Controller
@@ -151,6 +152,7 @@ func _ready() -> void:
 
 	# Instantiate UI
 	battle_menu = BattleMenuScene.instantiate()
+	battle_menu.pixel_font = ui_manager._pixel_font
 	add_child(battle_menu)
 	battle_menu.action_selected.connect(_on_menu_action_selected)
 	battle_menu.action_blocked.connect(_on_menu_action_blocked)
@@ -229,6 +231,19 @@ func _ready() -> void:
 		actor_nodes,
 		actor_root_positions
 	)
+
+	# Register spritesheet actors so faux idle motions are skipped for them
+	for actor_id in renderer.IDLE_SPRITESHEETS.keys():
+		animation_controller.register_spritesheet_actor(actor_id)
+		# Store idle texture + config for attack anim restoration
+		var sprite = actor_sprites.get(actor_id, null)
+		if sprite is Sprite2D and sprite.texture:
+			var idle_cfg = renderer.IDLE_SPRITESHEETS[actor_id]
+			animation_controller.register_idle_texture(actor_id, sprite.texture, idle_cfg)
+
+	# Register attack spritesheets
+	for actor_id in renderer.ATTACK_SPRITESHEETS.keys():
+		animation_controller.register_attack_spritesheet(actor_id, renderer.ATTACK_SPRITESHEETS[actor_id])
 
 	battle_manager.setup_state(party, enemies)
 
@@ -331,72 +346,105 @@ func _on_action_executed(result: Dictionary) -> void:
 	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
 		_show_limit_overlay(action_id)
 		game_feel_controller.on_limit_break()
-	
+
 	# Spawn Floating Text based on result
 	if result.get("ok"):
 		var payload = _dict_get(result, "payload", {})
-		var target_id = _dict_get(payload, "target_id", "")
-		var target = battle_manager.get_actor_by_id(target_id)
 		var attacker_id = _dict_get(payload, "attacker_id", "")
-		if attacker_id != "":
-			_play_action_whip(attacker_id)
-		
-		# Handle Damage
-		if payload.has("damage_instances"):
-			var instances = _dict_get(payload, "damage_instances", [])
-			if target:
-				_spawn_damage_numbers(target_id, instances)
-				_play_hit_shake(target_id)
-				var total_dmg = 0
-				for hit in instances:
-					total_dmg += int(hit)
-				var target_sprite = actor_sprites.get(target_id, null)
-				game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
-				if target.is_ko():
-					game_feel_controller.on_finishing_blow(target_sprite)
-			var total_instances = 0
-			for hit in instances:
-				total_instances += int(hit)
-			pending_damage_messages.append("Damage: " + str(total_instances))
-		elif payload.has("damage"):
-			var dmg = payload["damage"]
-			if target:
-				_spawn_damage_numbers(target_id, [dmg])
-				_play_hit_shake(target_id)
-				var target_sprite = actor_sprites.get(target_id, null)
-				game_feel_controller.on_damage_dealt(dmg, target_sprite)
-				if target.is_ko():
-					game_feel_controller.on_finishing_blow(target_sprite)
-			pending_damage_messages.append("Damage: " + str(dmg))
-				
-		# Handle Healing
-		if payload.has("healed"):
-			var heal = payload["healed"]
-			if target:
-				_create_floating_text(target.position, str(heal), Color.GREEN)
-			pending_effect_messages.append("Heal: " + str(heal))
-				
-		# Handle Status/Buffs (Simplified)
-		if payload.has("buff"):
-			if target: # Self buff usually
-				_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
-			_create_status_indicator(_dict_get(payload, "attacker_id", _dict_get(payload, "target_id", "")))
-			pending_status_messages.append("Buff: " + str(payload["buff"]))
-		elif payload.has("debuff"):
-			if target:
-				_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
-				_play_hit_shake(target_id)
-			_create_status_indicator(_dict_get(payload, "target_id", ""))
-			pending_status_messages.append("Debuff: " + str(payload["debuff"]))
-		elif payload.has("stun_applied") and payload["stun_applied"]:
-			if target:
-				_create_floating_text(target.position, "STUNNED", Color.YELLOW)
-				_play_hit_shake(target_id)
-			_create_status_indicator(_dict_get(payload, "target_id", ""))
-			pending_status_messages.append("Status: STUN")
-				
+
+		# Check if attacker has an attack animation and this is a damage action
+		var has_damage = payload.has("damage") or payload.has("damage_instances") or payload.has("multi_target_damage")
+		if attacker_id != "" and has_damage and animation_controller.has_attack_animation(attacker_id):
+			# Play attack animation — damage visuals fire at impact frame
+			animation_controller.play_attack_animation(
+				attacker_id,
+				func(): _show_action_visuals(payload),
+				func(): pass  # on_complete: nothing extra needed
+			)
+		else:
+			# No attack animation — immediate action whip + visuals
+			if attacker_id != "":
+				_play_action_whip(attacker_id)
+			_show_action_visuals(payload)
+
 	# Pass to log logic...
 	pass
+
+
+## Show damage numbers, healing text, and status effects for an action payload.
+func _show_action_visuals(payload: Dictionary) -> void:
+	var target_id = _dict_get(payload, "target_id", "")
+	var target = battle_manager.get_actor_by_id(target_id)
+
+	# Handle Damage
+	if payload.has("multi_target_damage"):
+		# Multi-target spells (Fireball, Venom Strike): per-target effects
+		var multi_hits = _dict_get(payload, "multi_target_damage", [])
+		for hit_data in multi_hits:
+			var mt_id = hit_data.get("target_id", "")
+			var mt_dmg = hit_data.get("damage", 0)
+			var mt_target = battle_manager.get_actor_by_id(mt_id)
+			if mt_target:
+				_spawn_damage_numbers(mt_id, [mt_dmg])
+				_play_hit_shake(mt_id)
+				var mt_sprite = actor_sprites.get(mt_id, null)
+				game_feel_controller.on_damage_dealt(mt_dmg, mt_sprite)
+				if mt_target.is_ko():
+					game_feel_controller.on_finishing_blow(mt_sprite)
+		var mt_total = _dict_get(payload, "damage_total", 0)
+		pending_damage_messages.append("Damage: " + str(mt_total))
+	elif payload.has("damage_instances"):
+		var instances = _dict_get(payload, "damage_instances", [])
+		if target:
+			_spawn_damage_numbers(target_id, instances)
+			_play_hit_shake(target_id)
+			var total_dmg = 0
+			for hit in instances:
+				total_dmg += int(hit)
+			var target_sprite = actor_sprites.get(target_id, null)
+			game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
+			if target.is_ko():
+				game_feel_controller.on_finishing_blow(target_sprite)
+		var total_instances = 0
+		for hit in instances:
+			total_instances += int(hit)
+		pending_damage_messages.append("Damage: " + str(total_instances))
+	elif payload.has("damage"):
+		var dmg = payload["damage"]
+		if target:
+			_spawn_damage_numbers(target_id, [dmg])
+			_play_hit_shake(target_id)
+			var target_sprite = actor_sprites.get(target_id, null)
+			game_feel_controller.on_damage_dealt(dmg, target_sprite)
+			if target.is_ko():
+				game_feel_controller.on_finishing_blow(target_sprite)
+		pending_damage_messages.append("Damage: " + str(dmg))
+
+	# Handle Healing
+	if payload.has("healed"):
+		var heal = payload["healed"]
+		if target:
+			_create_floating_text(target.position, str(heal), Color.GREEN)
+		pending_effect_messages.append("Heal: " + str(heal))
+
+	# Handle Status/Buffs (Simplified)
+	if payload.has("buff"):
+		if target: # Self buff usually
+			_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
+		_create_status_indicator(_dict_get(payload, "attacker_id", _dict_get(payload, "target_id", "")))
+		pending_status_messages.append("Buff: " + str(payload["buff"]))
+	elif payload.has("debuff"):
+		if target:
+			_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
+			_play_hit_shake(target_id)
+		_create_status_indicator(_dict_get(payload, "target_id", ""))
+		pending_status_messages.append("Debuff: " + str(payload["debuff"]))
+	elif payload.has("stun_applied") and payload["stun_applied"]:
+		if target:
+			_create_floating_text(target.position, "STUNNED", Color.YELLOW)
+			_play_hit_shake(target_id)
+		_create_status_indicator(_dict_get(payload, "target_id", ""))
+		pending_status_messages.append("Status: STUN")
 
 
 func _on_battle_ended(result: String) -> void:

@@ -67,3 +67,108 @@ Disabled odometer (`use_odometer = false`) on all health bars (party HP + boss H
 **Lesson:**
 - Prefer simple, proven UI patterns (static text) over complex animated ones (odometer) until the animation system is fully debugged
 - Apply the `const XClass = preload()` pattern even to type annotations in new files — don't mix bare class_names and preloads
+
+---
+
+## Fix 004: Settings menu doesn't restore battle menu on close
+
+**Symptoms:**
+After opening the settings menu with F1 and closing it, the battle action menu (Attack/Skill/Defend) disappears and the player cannot take any action.
+
+**Root cause:**
+In `settings_menu.gd:close()`, the code checked `_battle_manager.battle_state.get("state", "")` for `"PLAYER_TURN"`. But `state` is a direct variable on `battle_scene.gd` (`var state = "BATTLE_START"`), NOT stored inside the `battle_state` dictionary. The `.get("state", "")` always returned `""`, so the condition `state == "PLAYER_TURN"` was never true, and `battle_menu.set_enabled(true)` was never called.
+
+**Fix:**
+Changed `_battle_manager.battle_state.get("state", "")` to `_battle_scene.state` — accessing the var directly on the scene node.
+
+**Lesson:**
+- Know where each piece of state lives. `battle_state` is a dictionary on `BattleManager` with party/enemies/flags. The turn phase `state` is a plain var on `battle_scene.gd`.
+- When bridging between controllers and the main scene, always verify the data path — don't assume a dict key exists just because the concept sounds right.
+
+---
+
+## Fix 005: Lower UI too small, HP/MP text unreadable, LB bar misaligned
+
+**Symptoms:**
+- HP and MP text cramped inside bars (13px font in 12px bar), unreadable
+- Only 3 actions visible before overflow in battle menu
+- LB bar right-aligned with no label — purpose unclear
+
+**Changes:**
+- Moved `LOWER_UI_TOP` from 520 to 492 (28px more vertical space)
+- Increased `HP_BAR_HEIGHT` from 12 to 16 and `MP_BAR_HEIGHT` from 8 to 10
+- Made `animated_health_bar.gd` static text font_size dynamic: `mini(bar_size.y - 1, 14)`
+- Updated battle menu `.tscn` panel to match new Y offset (492)
+- LB bar: removed expand spacer, added "LB" label, left-aligned in row
+- Integrated Silkscreen pixel font (SIL OFL) across all UI labels
+
+**Lesson:**
+- Font sizes must be proportional to container height — never hardcode a font_size larger than the bar it sits in
+- Lower UI panels and menu panels must share the same LOWER_UI_TOP constant to stay aligned
+
+---
+
+## Battle Polish Sprint (2026-02-05)
+
+### Phase 1 — Text & Config
+
+**Changes:**
+- Kairus idle spritesheet scale reduced from `0.45` to `0.40` (better proportion with party)
+- Y-based `z_index` on all actor/boss nodes (`z_index = int(position.y)`) for correct depth sorting
+- Verified idle sway is disabled (stepped 2-keyframe idle only)
+- Applied Silkscreen pixel font to battle menu labels (action items, actor name, description panel)
+- Per-character Limit Break descriptions (was generic "Limit Break" for all)
+- Resource short names + consistent skill descriptions with "Cost. Effect." format
+
+### Phase 2 — UI Layout
+
+**Changes:**
+- **Frame bleed fix:** Replaced `hframes/vframes` with `region_rect` for spritesheet animation — integer division frame sizes (`tex_w / hframes`) prevent fractional pixel bleed
+- HP bar height `16→20`, MP bar height `10→14`, `BAR_WIDTH = 130`
+- Bar background contrast increased: `Color(0.12, 0.12, 0.12)` → `Color(0.22, 0.22, 0.25)`
+- Party panel: replaced HBoxContainer layout with fixed-position Control columns (Name | Bars | Resource | LB) with 1px vertical separators
+- LB bar flash effect: pulse tween between blue tones when gauge reaches 100%
+- Battle menu panel widened to 220px; description panel full height with autowrap
+- Actor name separator line + color in battle menu
+- Fixed 2x8 resource dot grid (`resource_dot_grid.gd`) — `dot_size=8`, `dot_spacing=2`, `fixed_columns=8`
+- LB bars in own aligned column (fixed x-offset at 296/316)
+
+**Bug Fixes:**
+- LB percentage number scaled up: font_size `9→11`, bar height `12→14px`
+- Active character name overflow: removed font size scaling in party panel (color-only styling), added `clip_text = true`, added subtle row highlight (`Color(1.0, 0.9, 0.4, 0.08)` background tint)
+
+### Phase 3 — Game Logic
+
+**Task 9: Fire Imbue skip Ki drain on activation turn**
+- `action_resolver.gd`: sets `flags["fire_imbue_skip_drain"] = true` when toggling Fire Imbue ON
+- `status_processor.gd`: checks flag before Ki drain, clears it if true — skips exactly one drain cycle
+
+**Task 10: Burn DOT**
+- `status_effect_ids.gd`: added `const BURN := "BURN"`
+- `status_effect_factory.gd`: added `burn(turns=2, damage=8)` with `DOT + ELEMENTAL + CLEANSABLE` tags
+- `action_resolver.gd`: applies Burn in `execute_basic_attack()` and Flurry (first hit) when attacker has `FIRE_IMBUE` and target lacks `BURN`
+- Existing DOT processor handles tick automatically (no changes needed)
+
+**Task 5: Fireball game feel fix**
+- Changed Fireball payload to include `multi_target_damage` array with per-target `{target_id, damage}` entries
+- Added `multi_target_damage` handler in `battle_scene.gd:_on_action_executed()` — spawns damage numbers, hit shake, and game feel per target
+- Same pattern applied to Venom Strike for consistency
+
+### Phase 4 — Animation System
+
+**Task 11: Attack spritesheet support**
+- `battle_renderer.gd`: added `ATTACK_SPRITESHEETS` config (kairus: 1024x1024, hframes=4, vframes=3, fps=14, impact_frame=8)
+- `battle_animation_controller.gd`: added full attack animation system:
+  - Storage: `_attack_configs`, `_idle_textures`, `_idle_configs`, `_attack_playing`
+  - `register_attack_spritesheet()` / `register_idle_texture()` / `has_attack_animation()`
+  - `play_attack_animation(actor_id, on_impact, on_complete)`: pauses idle timer, swaps texture, plays frames via region_rect with bottom-anchor offset, fires `on_impact` at configured `impact_frame`, restores idle on completion
+
+**Task 12: Attack animation sync with damage**
+- `battle_scene.gd`: extracted damage/heal/buff visuals into `_show_action_visuals(payload)`
+- If attacker has attack animation + payload has damage: plays attack anim, fires `_show_action_visuals()` at impact frame
+- Otherwise: falls back to existing `play_action_whip()` with immediate visuals
+
+**Lesson:**
+- Timer.set_meta("frame", N) pattern works well for mutable state in GDScript closures (closures can't mutate captured local vars)
+- Attack animation texture swap + idle restoration requires storing both idle and attack texture/config references separately
+- Impact frame callbacks let damage visuals sync precisely to the animation keyframe

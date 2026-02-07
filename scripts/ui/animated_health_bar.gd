@@ -12,12 +12,13 @@ const OdometerLabelClass = preload("res://scripts/ui/odometer_label.gd")
 @export var drain_duration: float = 0.6    # Time for yellow bar to drain to current HP
 @export var yellow_color: Color = Color(0.95, 0.8, 0.15)
 @export var main_color: Color = Color(0.2, 0.75, 0.2)
-@export var background_color: Color = Color(0.12, 0.12, 0.12, 0.95)
+@export var background_color: Color = Color(0.22, 0.22, 0.25, 0.95)
 @export var corner_radius: int = 6
 @export var bar_size: Vector2 = Vector2(140, 18)
 @export var use_odometer: bool = true      # Rolling digit display for HP numbers
 @export var low_hp_threshold: float = 0.25 # Fraction of max HP to trigger warning
 @export var low_hp_color: Color = Color(0.85, 0.2, 0.2)
+var custom_font: Font                  # Optional pixel font for HP text
 
 # State machine
 enum State { IDLE, HOLD, DRAIN }
@@ -119,7 +120,12 @@ func _create_static_text() -> void:
 	_hp_text.bbcode_enabled = true
 	_hp_text.scroll_active = false
 	_hp_text.fit_content = false
-	_hp_text.add_theme_font_size_override("normal_font_size", 13)
+	var text_font_size = mini(int(bar_size.y) - 1, 14)
+	_hp_text.add_theme_font_size_override("normal_font_size", text_font_size)
+	_hp_text.add_theme_font_size_override("bold_font_size", text_font_size)
+	if custom_font:
+		_hp_text.add_theme_font_override("normal_font", custom_font)
+		_hp_text.add_theme_font_override("bold_font", custom_font)
 	_hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	# Use explicit size instead of anchors
@@ -286,7 +292,8 @@ func _update_text(animate: bool = true) -> void:
 		if _hp_max_label:
 			_hp_max_label.text = str(_max_hp)
 	elif _hp_text:
-		_hp_text.text = "[b]%d[/b][font_size=11]/%d[/font_size]" % [_current_hp, _max_hp]
+		var small_size = maxi(8, mini(int(bar_size.y) - 3, 12))
+		_hp_text.text = "[b]%d[/b][font_size=%d]/%d[/font_size]" % [_current_hp, small_size, _max_hp]
 
 
 ## Check if HP has crossed the low-HP threshold and update visuals.

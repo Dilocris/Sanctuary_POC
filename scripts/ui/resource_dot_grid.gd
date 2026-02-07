@@ -6,6 +6,7 @@ class_name ResourceDotGrid
 
 # Configuration
 @export var max_value: int = 6
+@export var fixed_columns: int = 0  # If > 0, always reserve this many columns for alignment
 @export var dot_size: int = 6
 @export var dot_spacing: int = 2
 @export var row_spacing: int = 1
@@ -37,7 +38,9 @@ func _rebuild_grid() -> void:
 	var cols = ceili(float(max_value) / 2.0)
 	var rows = mini(2, max_value)
 
-	var total_width = cols * dot_size + (cols - 1) * dot_spacing
+	# Use fixed_columns for sizing if set (ensures consistent width across rows)
+	var size_cols = fixed_columns if fixed_columns > 0 else cols
+	var total_width = size_cols * dot_size + (size_cols - 1) * dot_spacing
 	var total_height = rows * dot_size + (rows - 1) * row_spacing
 
 	custom_minimum_size = Vector2(total_width, total_height)

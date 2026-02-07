@@ -19,7 +19,7 @@ QUICK REFERENCE:
 
 # Sanctuary POC - Roadmap
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-05
 
 ---
 
@@ -62,17 +62,17 @@ QUICK REFERENCE:
 
 | Item | Description | Source | Status |
 |------|-------------|--------|--------|
-| Yellow Health Bar | Delayed "recent damage" bar that drains to current HP. | POLISH_PLAN | PENDING |
-| HP Number Scroll | Odometer-style digit rolling for HP changes. | POLISH_PLAN | PENDING |
+| Yellow Health Bar | Delayed "recent damage" bar that drains to current HP. | POLISH_PLAN | DONE (2026-02-04) |
+| HP Number Scroll | Odometer-style digit rolling for HP changes. | POLISH_PLAN | DONE (2026-02-04) — disabled due to Godot clip_children issues |
 
 ### MEDIUM Priority
 
 | Item | Description | Source | Status |
 |------|-------------|--------|--------|
-| Cursor Tint | Higher contrast cursor for readability. | POLISH_PLAN | PENDING |
-| Hit Stop | 2-6 frame pause on impactful hits. | POLISH_PLAN | PENDING |
-| Camera Shake | Light shake on heavy hits/crits. | POLISH_PLAN | PENDING |
-| Low HP Warning | Vignette or heartbeat at critical HP threshold. | POLISH_PLAN | PENDING |
+| Cursor Tint | Higher contrast cursor for readability. | POLISH_PLAN | DONE (2026-02-04) |
+| Hit Stop | 2-6 frame pause on impactful hits. | POLISH_PLAN | DONE (2026-02-04) |
+| Camera Shake | Light shake on heavy hits/crits. | POLISH_PLAN | DONE (2026-02-04) |
+| Low HP Warning | Vignette or heartbeat at critical HP threshold. | POLISH_PLAN | DONE (2026-02-04) |
 
 ### LOW Priority
 
@@ -117,6 +117,14 @@ QUICK REFERENCE:
 | Boss AI Phases 1-3 | Full rotation + phase transitions | 2026-02-03 | Phase 4 |
 | God Class Refactor | Phases 1-7 complete (-39% lines) | 2026-02-03 | Review |
 | Data Resources | ActorData + ActionData .tres files | 2026-02-03 | Review |
+| Battle Polish Sprint | 4-phase polish: text/config, UI layout, game logic, animations | 2026-02-05 | Sprint |
+| Fire Imbue + Burn DOT | Skip Ki drain on activation, Burn applied by fire attacks | 2026-02-05 | Phase 3 |
+| Attack Animation System | Kairus attack spritesheet with impact-synced damage | 2026-02-05 | Phase 4 |
+| Fireball Game Feel | Per-target damage numbers + shake for AoE spells | 2026-02-05 | Phase 3 |
+| UI Fixed Columns | Party panel with pixel-perfect column layout + separators | 2026-02-05 | Phase 2 |
+| Frame Bleed Fix | region_rect integer-division frames for spritesheets | 2026-02-05 | Phase 2 |
+| LB Bar Flash | Pulse tween effect when Limit gauge full | 2026-02-05 | Phase 2 |
+| Pixel Font | Silkscreen pixel font on all battle menu labels | 2026-02-05 | Phase 1 |
 
 ---
 

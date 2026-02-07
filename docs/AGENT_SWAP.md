@@ -1,7 +1,7 @@
 <!--
 DOC_ID: AGENT_SWAP
 STATUS: ACTIVE - Primary handoff document + work log
-LAST_UPDATED: 2026-02-04
+LAST_UPDATED: 2026-02-05
 SUPERSEDES: archive/PHASE_3_REFINEMENTS.md, archive/IMPLEMENTATION_PLAN_PHASE_4.md
 SUPERSEDED_BY: None
 
@@ -294,3 +294,63 @@ After this fix, resources should load with:
 Resource loading issue definitively fixed. The battle should now load actors from `.tres` files without fallback.
 
 — Claude Opus 4.5, 2026-02-03
+
+---
+
+# Sign-in (2026-02-05)
+
+**Agent:** Claude Opus 4.6
+**Branch:** `main`
+
+## Acknowledgements
+- Read AGENT_SWAP.md, FIXES_REPORT.md, POLISH_PLAN.md, ROADMAP.md
+- Reviewed full codebase: battle_scene.gd, battle_ui_manager.gd, battle_renderer.gd, battle_animation_controller.gd, action_resolver.gd, status_processor.gd, status_effect_factory.gd
+
+## Work Done: Battle Polish Sprint (4 Phases)
+
+### Phase 1 — Text & Config
+- Kairus idle scale `0.45→0.40`
+- Y-based `z_index` on character/boss nodes for depth sorting
+- Pixel font (Silkscreen) applied to all battle menu labels
+- Per-character Limit Break descriptions
+- Resource short names + consistent "Cost. Effect." skill descriptions
+
+### Phase 2 — UI Layout
+- Frame bleed fix: `region_rect` with integer-division frame sizes
+- HP bars `16→20px`, MP bars `10→14px`, `BAR_WIDTH=130`, improved contrast
+- Party panel: fixed-position columns with 1px vertical separators
+- LB bar flash tween at 100%, dot grid (`2x8`, 8px dots), LB column alignment
+- Battle menu widened to 220px, description panel autowrap
+- Bug fixes: LB % font scaled up, active name color-only styling + row highlight
+
+### Phase 3 — Game Logic
+- Fire Imbue: skip Ki drain on activation turn via `fire_imbue_skip_drain` flag
+- Burn DOT status: `BURN` id, factory method (2 turns, 8 dmg), auto-applied by Fire Imbue attacks
+- Fireball/Venom Strike: `multi_target_damage` array payload for per-target game feel
+
+### Phase 4 — Animation System
+- `ATTACK_SPRITESHEETS` config in `battle_renderer.gd` (kairus: 4x3 grid, 14fps)
+- Full attack animation system in `battle_animation_controller.gd`: texture swap, frame playback, impact callback, idle restore
+- `_show_action_visuals()` extracted in `battle_scene.gd` — called at impact frame or immediately
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `battle_renderer.gd` | Scale, z_index, region_rect, ATTACK_SPRITESHEETS |
+| `battle_ui_manager.gd` | Bar heights, fixed columns, separators, LB flash, row highlights |
+| `battle_animation_controller.gd` | Attack spritesheet system (register, play, restore) |
+| `battle_scene.gd` | Attack anim integration, _show_action_visuals, multi_target_damage handler |
+| `action_resolver.gd` | Fire Imbue flag, Burn application, multi_target_damage payloads |
+| `status_processor.gd` | Fire Imbue skip drain check |
+| `status_effect_ids.gd` | BURN constant |
+| `status_effect_factory.gd` | burn() factory method |
+| `battle_menu.gd` | Pixel font, LB descriptions, resource short names |
+| `battle_menu.tscn` | Panel width, description layout, actor separator |
+| `resource_dot_grid.gd` | Fixed 2x8 dot layout |
+| `animated_health_bar.gd` | Bar sizing, contrast |
+
+## Sign-off
+
+All 4 phases of the Battle Polish Sprint complete. Kairus has attack animation with synced damage, Fire Imbue applies Burn DOT, Fireball has per-target game feel, and the UI is significantly more polished (readable bars, fixed columns, pixel font, LB flash). Ready for playtesting.
+
+— Claude Opus 4.6, 2026-02-05

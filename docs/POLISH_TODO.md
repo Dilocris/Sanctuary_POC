@@ -1,6 +1,6 @@
 # Polish Plan - Implementation Status & Todo
 
-Generated from codebase audit against `POLISH_PLAN.md`. Updated after polish implementation pass.
+Generated from codebase audit against `POLISH_PLAN.md`. Updated after Battle Polish Sprint (2026-02-05).
 
 ## Already Implemented
 
@@ -34,6 +34,17 @@ Generated from codebase audit against `POLISH_PLAN.md`. Updated after polish imp
 | **Low-HP warning** | `animated_health_bar.gd:_check_low_hp` | **NEW** — red bar + heartbeat pulse at <= 25% HP |
 | **Finishing blow slow-mo** | `game_feel_controller.gd:on_finishing_blow` | **NEW** — 0.3x time scale + flash + shake on KO hits |
 | **Duplicate HP bar fix** | `battle_scene.gd:_update_status_label` | **FIXED** — delegates to `ui_manager.update_party_status()` |
+| **Frame bleed fix** | `battle_renderer.gd` | **NEW** — region_rect with integer-division frame sizes replaces hframes/vframes |
+| **Fixed-column party panel** | `battle_ui_manager.gd` | **NEW** — pixel-precise column layout with 1px separators |
+| **LB bar flash** | `battle_ui_manager.gd` | **NEW** — pulse tween between blue tones at 100% gauge |
+| **Row highlight (active)** | `battle_ui_manager.gd` | **NEW** — subtle background tint instead of font size scaling |
+| **Resource dot grid** | `resource_dot_grid.gd` | **NEW** — fixed 2x8 layout, dot_size=8, dot_spacing=2 |
+| **Pixel font everywhere** | `battle_menu.gd`, `battle_scene.gd` | **NEW** — Silkscreen applied to all menu labels |
+| **Fire Imbue skip drain** | `action_resolver.gd`, `status_processor.gd` | **NEW** — no Ki drain on activation turn |
+| **Burn DOT** | `status_effect_factory.gd`, `action_resolver.gd` | **NEW** — Fire Imbue attacks apply Burn (2 turns, 8 dmg) |
+| **Multi-target game feel** | `battle_scene.gd`, `action_resolver.gd` | **NEW** — per-target damage numbers + shake for Fireball/Venom Strike |
+| **Attack spritesheet** | `battle_renderer.gd`, `battle_animation_controller.gd` | **NEW** — Kairus attack anim (4x3, 14fps) with impact callback |
+| **Attack sync** | `battle_scene.gd`, `battle_animation_controller.gd` | **NEW** — damage visuals fire at impact frame, extracted to `_show_action_visuals()` |
 
 ## Resolved: Duplicate HP Bar Code
 

@@ -33,8 +33,11 @@ func process_end_of_turn_effects(actor: Character) -> void:
 		actor.remove_status(status_id)
 		_battle_manager.add_message(status_id + " wears off!")
 	if actor.id == "kairus" and actor.has_status(StatusEffectIds.FIRE_IMBUE):
-		actor.consume_resource("ki", 1)
-		if actor.get_resource_current("ki") <= 0:
-			actor.remove_status(StatusEffectIds.FIRE_IMBUE)
-			_battle_manager.add_message("Kairus's Fire Imbue fades (out of Ki)!")
+		if _battle_manager.battle_state.flags.get("fire_imbue_skip_drain", false):
+			_battle_manager.battle_state.flags["fire_imbue_skip_drain"] = false
+		else:
+			actor.consume_resource("ki", 1)
+			if actor.get_resource_current("ki") <= 0:
+				actor.remove_status(StatusEffectIds.FIRE_IMBUE)
+				_battle_manager.add_message("Kairus's Fire Imbue fades (out of Ki)!")
 	_battle_manager._check_battle_end()

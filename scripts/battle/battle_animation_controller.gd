@@ -22,6 +22,36 @@ var _flash_tweens: Dictionary = {}
 var _poison_tweens: Dictionary = {}
 var _last_hit_at: Dictionary = {}
 var _global_idle_tokens: Dictionary = {}
+var _spritesheet_actors: Dictionary = {}  # actor_id -> true; skip faux idle for these
+var _attack_configs: Dictionary = {}      # actor_id -> {path, hframes, vframes, fps, impact_frame, texture}
+var _idle_textures: Dictionary = {}       # actor_id -> Texture2D (idle sheet for restoration)
+var _idle_configs: Dictionary = {}        # actor_id -> {hframes, vframes} for idle restoration
+var _attack_playing: Dictionary = {}      # actor_id -> true while attack anim is active
+
+
+func has_spritesheet_idle(actor_id: String) -> bool:
+	return _spritesheet_actors.has(actor_id)
+
+
+func has_attack_animation(actor_id: String) -> bool:
+	return _attack_configs.has(actor_id)
+
+
+func register_spritesheet_actor(actor_id: String) -> void:
+	_spritesheet_actors[actor_id] = true
+
+
+func register_attack_spritesheet(actor_id: String, config: Dictionary) -> void:
+	if not ResourceLoader.exists(config.get("path", "")):
+		return
+	var cfg = config.duplicate()
+	cfg["texture"] = load(config["path"])
+	_attack_configs[actor_id] = cfg
+
+
+func register_idle_texture(actor_id: String, texture: Texture2D, config: Dictionary) -> void:
+	_idle_textures[actor_id] = texture
+	_idle_configs[actor_id] = config
 
 
 func setup(
@@ -126,6 +156,8 @@ func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
 # ============================================================================
 
 func start_idle_wiggle(actor_id: String) -> void:
+	if has_spritesheet_idle(actor_id):
+		return
 	var sprite = _actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return
@@ -214,6 +246,113 @@ func play_action_whip(actor_id: String, is_party_member: bool) -> void:
 
 
 # ============================================================================
+# ATTACK ANIMATION (Spritesheet playback)
+# ============================================================================
+
+func play_attack_animation(actor_id: String, on_impact: Callable, on_complete: Callable) -> void:
+	if not _attack_configs.has(actor_id):
+		on_impact.call()
+		on_complete.call()
+		return
+	var sprite = _actor_sprites.get(actor_id, null)
+	if sprite == null or not (sprite is Sprite2D):
+		on_impact.call()
+		on_complete.call()
+		return
+
+	var config = _attack_configs[actor_id]
+	var attack_tex = config["texture"]
+	var hf = config.get("hframes", 4)
+	var vf = config.get("vframes", 3)
+	var fps = config.get("fps", 14)
+	var impact_frame = config.get("impact_frame", 8)
+	var total_frames = hf * vf
+
+	# Pause idle frame timer
+	var character_node = _actor_nodes.get(actor_id, null)
+	if character_node:
+		var idle_timer = character_node.get_node_or_null("FrameTimer")
+		if idle_timer:
+			idle_timer.paused = true
+
+	stop_idle_wiggle(actor_id)
+	_attack_playing[actor_id] = true
+
+	# Store idle texture for restoration
+	var idle_tex = sprite.texture
+
+	# Swap to attack spritesheet
+	sprite.texture = attack_tex
+	var atk_tex_w = int(attack_tex.get_width())
+	var atk_tex_h = int(attack_tex.get_height())
+	var frame_w = atk_tex_w / hf
+	var frame_h = atk_tex_h / vf
+
+	# Adjust offset for attack frames (bottom-anchored)
+	var idle_offset = sprite.offset
+	sprite.offset = Vector2(0, -frame_h)
+	sprite.region_rect = Rect2(0, 0, frame_w, frame_h)
+
+	# Animate through frames via timer
+	var frame_timer = Timer.new()
+	frame_timer.name = "AttackFrameTimer"
+	frame_timer.wait_time = 1.0 / fps
+	frame_timer.one_shot = false
+	frame_timer.autostart = true
+	frame_timer.set_meta("frame", 0)
+	frame_timer.set_meta("impact_fired", false)
+
+	var impact_cb = on_impact
+	var complete_cb = on_complete
+	var restore_tex = idle_tex
+	var restore_offset = idle_offset
+
+	frame_timer.timeout.connect(func():
+		var f = timer_get_frame(frame_timer) + 1
+		frame_timer.set_meta("frame", f)
+
+		if f >= total_frames:
+			# Animation complete — restore idle
+			frame_timer.stop()
+			frame_timer.queue_free()
+			sprite.texture = restore_tex
+			sprite.offset = restore_offset
+			# Restore idle region_rect to frame 0
+			if _idle_configs.has(actor_id):
+				var ic = _idle_configs[actor_id]
+				var idle_fw = int(restore_tex.get_width()) / ic.get("hframes", 1)
+				var idle_fh = int(restore_tex.get_height()) / ic.get("vframes", 1)
+				sprite.region_rect = Rect2(0, 0, idle_fw, idle_fh)
+			# Resume idle timer
+			if character_node:
+				var idle_t = character_node.get_node_or_null("FrameTimer")
+				if idle_t:
+					idle_t.paused = false
+			_attack_playing.erase(actor_id)
+			if not frame_timer.get_meta("impact_fired"):
+				impact_cb.call()
+			complete_cb.call()
+			return
+
+		# Update region_rect for current frame
+		var col = f % hf
+		var row = f / hf
+		sprite.region_rect = Rect2(col * frame_w, row * frame_h, frame_w, frame_h)
+
+		# Fire impact callback at the impact frame
+		if f == impact_frame and not frame_timer.get_meta("impact_fired"):
+			frame_timer.set_meta("impact_fired", true)
+			impact_cb.call()
+	)
+	_scene_root.add_child(frame_timer)
+
+
+## Helper to read frame counter from timer meta (avoids closure capture issues).
+func timer_get_frame(timer: Timer) -> int:
+	return timer.get_meta("frame")
+
+
+# ============================================================================
 # HIT SHAKE (Damage recoil)
 # ============================================================================
 
@@ -266,6 +405,8 @@ func start_global_idle_all() -> void:
 
 
 func start_global_idle(actor_id: String) -> void:
+	if has_spritesheet_idle(actor_id):
+		return
 	var actor = _actor_nodes.get(actor_id, null)
 	if actor == null:
 		return
@@ -384,3 +525,4 @@ func cleanup_actor_tweens(actor_id: String) -> void:
 		_flash_tweens.erase(actor_id)
 	if _global_idle_tokens.has(actor_id):
 		_global_idle_tokens.erase(actor_id)
+	_attack_playing.erase(actor_id)

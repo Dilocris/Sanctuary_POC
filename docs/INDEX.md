@@ -1,6 +1,6 @@
 # Sanctuary POC - Documentation Index
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-05
 
 ---
 

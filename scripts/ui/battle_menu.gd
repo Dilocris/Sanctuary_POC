@@ -25,6 +25,7 @@ var disabled_actions: Dictionary = {}
 var input_block_until_ms: int = 0
 var cursor_nodes: Array = []
 var label_nodes: Array = []
+var pixel_font: Font
 
 func _ready() -> void:
 	visible = false
@@ -36,6 +37,12 @@ func setup(actor: Character) -> void:
 	visible = true
 	if actor_label:
 		actor_label.text = actor.display_name.to_upper()
+		if pixel_font:
+			actor_label.add_theme_font_override("font", pixel_font)
+		actor_label.add_theme_font_size_override("font_size", 13)
+		actor_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.6))
+	if description_label and pixel_font:
+		description_label.add_theme_font_override("font", pixel_font)
 	_build_main_menu()
 	_update_selection()
 	_block_input(150)
@@ -65,31 +72,37 @@ func _build_main_menu() -> void:
 			"ludwig": limit_id = ActionIds.LUD_LIMIT
 			"ninos": limit_id = ActionIds.NINOS_LIMIT
 			"catraca": limit_id = ActionIds.CAT_LIMIT
+		var limit_desc = ""
+		match active_actor.id:
+			"kairus": limit_desc = "Inferno Fist: 5 rapid strikes + devastating finisher."
+			"ludwig": limit_desc = "Dragonfire Roar: Rally allies (+ATK) and charm foes."
+			"ninos": limit_desc = "Siren's Call: Heal all allies, cleanse, and grant Regen."
+			"catraca": limit_desc = "Genie's Wrath: Next 3 spells cost 0 MP and deal 1.5x damage."
 		if limit_id != "":
-			menu_items.append({"label": "Limit Break", "id": limit_id, "desc": "Unleash a powerful limit ability (100%)."})
+			menu_items.append({"label": "Limit Break", "id": limit_id, "desc": limit_desc})
 	# Common Attack (Catraca uses Fire Bolt as her basic)
 	if active_actor.id == "catraca":
-		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Single target fire damage."})
+		menu_items.append({"label": "Fire Bolt", "id": ActionIds.CAT_FIRE_BOLT, "desc": "Single-target fire damage."})
 	else:
 		menu_items.append({"label": "Attack", "id": "ATTACK", "desc": "Basic physical attack."})
-	
+
 	# Class Specific Submenu
 	match active_actor.id:
 		"kairus":
-			menu_items.append({"label": "Skills", "id": "SKILL_SUB", "desc": "Monk abilities using Ki."})
+			menu_items.append({"label": "Skills", "id": "SKILL_SUB", "desc": "Monk abilities. Costs Ki."})
 		"ludwig":
-			menu_items.append({"label": "Maneuvers", "id": "SKILL_SUB", "desc": "Battle maneuvers using Superiority Dice."})
+			menu_items.append({"label": "Maneuvers", "id": "SKILL_SUB", "desc": "Battle maneuvers. Costs Dice."})
 		"ninos":
 			menu_items.append({"label": "Abilities", "id": "SKILL_SUB", "desc": "Bardic spells and inspiration."})
 		"catraca":
-			menu_items.append({"label": "Metamagic", "id": "META_SUB", "desc": "Sorcery modifiers (spend SP)."})
-			menu_items.append({"label": "Magic", "id": "SKILL_SUB", "desc": "Sorcerous spells."})
-	
+			menu_items.append({"label": "Metamagic", "id": "META_SUB", "desc": "Sorcery modifiers. Costs SP."})
+			menu_items.append({"label": "Magic", "id": "SKILL_SUB", "desc": "Sorcerous spells. Costs MP."})
+
 	# Common Defend/Guard
 	if active_actor.id == "ludwig":
-		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle stance: +DEF, half dmg, enables Riposte; no Attacks/Maneuvers."})
+		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle: +DEF, half dmg, enables Riposte. No Attacks/Maneuvers."})
 	else:
-		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn."})
+		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn, reduce damage taken."})
 		
 	# Item system (TODO: implement inventory/consumables)
 	# menu_items.append({"label": "Item", "id": "ITEM_SUB", "desc": "Use consumables."})
@@ -101,28 +114,28 @@ func _build_submenu(category: String) -> void:
 	match active_actor.id:
 		"kairus":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Flurry of Blows", "id": ActionIds.KAI_FLURRY, "desc": "2 Ki: Multi-hit attack."})
-				menu_items.append({"label": "Stunning Strike", "id": ActionIds.KAI_STUN_STRIKE, "desc": "1 Ki: Stun target."})
-				menu_items.append({"label": "Fire Imbue", "id": ActionIds.KAI_FIRE_IMBUE, "desc": "Toggle: Add fire dmg; drains Ki each turn."})
+				menu_items.append({"label": "Flurry of Blows", "id": ActionIds.KAI_FLURRY, "desc": "2 Ki. Multi-hit physical attack."})
+				menu_items.append({"label": "Stunning Strike", "id": ActionIds.KAI_STUN_STRIKE, "desc": "1 Ki. Strike with chance to stun."})
+				menu_items.append({"label": "Fire Imbue", "id": ActionIds.KAI_FIRE_IMBUE, "desc": "Toggle. Add fire dmg to attacks; drains 1 Ki/turn."})
 		"ludwig":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Lunging Attack", "id": ActionIds.LUD_LUNGING, "desc": "1 Die: Reach attack + bonus dmg."})
-				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Die: Bonus dmg (ignores evasion)."})
-				menu_items.append({"label": "Shield Bash", "id": ActionIds.LUD_SHIELD_BASH, "desc": "1 Die: Chance to stun."})
-				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Die: Heal an ally."})
+				menu_items.append({"label": "Lunging Attack", "id": ActionIds.LUD_LUNGING, "desc": "1 Dice. Reach attack with bonus damage."})
+				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Dice. High damage, ignores evasion."})
+				menu_items.append({"label": "Shield Bash", "id": ActionIds.LUD_SHIELD_BASH, "desc": "1 Dice. Strike with chance to stun."})
+				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Dice. Heal an ally."})
 		"ninos":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp: Ally's next attack +1d8 dmg."})
-				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP: Damage + ATK Down."})
-				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP: Heal an ally."})
-				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP: Party +1d4 dmg for 2 turns."})
+				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp. Ally's next attack deals +1d8 bonus dmg."})
+				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP. Damage target and apply ATK Down."})
+				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP. Restore HP to an ally."})
+				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP. Party gains +1d4 dmg for 2 turns."})
 		"catraca":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP: Fire damage to all enemies."})
-				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP: DEF up for 3 turns."})
+				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP. Fire damage to all enemies."})
+				menu_items.append({"label": "Mage Armor", "id": ActionIds.CAT_MAGE_ARMOR, "desc": "4 MP. Boost DEF for 3 turns."})
 			elif category == "META_SUB":
-				menu_items.append({"label": "Quicken Spell", "id": ActionIds.CAT_METAMAGIC_QUICKEN, "desc": "2 SP: Extra action after spell."})
-				menu_items.append({"label": "Twin Spell", "id": ActionIds.CAT_METAMAGIC_TWIN, "desc": "1 SP: Single spell hits 2 targets."})
+				menu_items.append({"label": "Quicken Spell", "id": ActionIds.CAT_METAMAGIC_QUICKEN, "desc": "2 SP. Gain an extra action after next spell."})
+				menu_items.append({"label": "Twin Spell", "id": ActionIds.CAT_METAMAGIC_TWIN, "desc": "1 SP. Next single-target spell hits 2 targets."})
 	
 	_render_menu_items()
 
@@ -149,6 +162,8 @@ func _render_menu_items() -> void:
 		if disabled_actions.has(item["id"]):
 			label_text += " (X)"
 		label.text = label_text
+		if pixel_font:
+			label.add_theme_font_override("font", pixel_font)
 		row.add_child(label)
 		label_nodes.append(label)
 		action_list_node.add_child(row)

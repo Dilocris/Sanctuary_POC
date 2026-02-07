@@ -28,11 +28,26 @@ const CHARACTER_SPRITES := {
 	"ninos": "res://assets/sprites/characters/ninos_sprite_main.png",
 	"ludwig": "res://assets/sprites/characters/Ludwig_sprite_main.png"
 }
+# Spritesheet configs: actor_id -> {path, hframes, vframes, fps, scale}
+# Characters with spritesheets use frame animation instead of static sprites
+const IDLE_SPRITESHEETS := {
+	"kairus": {
+		"path": "res://assets/sprites/characters/kairus-idle-anim-2.png",
+		"hframes": 6, "vframes": 1, "fps": 6, "scale": 0.40
+	}
+}
+const ATTACK_SPRITESHEETS := {
+	"kairus": {
+		"path": "res://assets/sprites/characters/kairus-attack-anim.png",
+		"hframes": 4, "vframes": 3, "fps": 14, "impact_frame": 8
+	}
+}
 const BOSS_SPRITE := "res://assets/sprites/characters/marcus_sprite_main.png"
 const BACKGROUND_SPRITE := "res://assets/sprites/environment/env_sprite_dungeon_corridor.png"
 
 # External references
 var _scene_root: Node
+var pixel_font: Font
 
 # Output dictionaries (populated during creation)
 var actor_sprites: Dictionary = {}
@@ -70,12 +85,20 @@ func create_character(data: Dictionary) -> Character:
 	var actor_id = data.get("id", "")
 	if data.has("position"):
 		character.position = data["position"]
+	character.z_index = int(character.position.y)
 
 	actor_nodes[actor_id] = character
 	actor_root_positions[actor_id] = character.position
 
-	# Add Visuals
-	var sprite_path = CHARACTER_SPRITES.get(actor_id, "")
+	# Add Visuals — check for spritesheet first, fall back to static sprite
+	var sheet_config = IDLE_SPRITESHEETS.get(actor_id, {})
+	var sprite_path = ""
+	var use_spritesheet = false
+	if not sheet_config.is_empty() and ResourceLoader.exists(sheet_config.get("path", "")):
+		sprite_path = sheet_config["path"]
+		use_spritesheet = true
+	else:
+		sprite_path = CHARACTER_SPRITES.get(actor_id, "")
 	var sprite_size = Vector2(40, 40)
 
 	if sprite_path != "" and ResourceLoader.exists(sprite_path):
@@ -84,10 +107,37 @@ func create_character(data: Dictionary) -> Character:
 		sprite.texture = load(sprite_path)
 		sprite.centered = false
 		sprite.position = Vector2(0, 0)
-		sprite.scale = Vector2(ACTOR_SCALE, ACTOR_SCALE)
+
+		if use_spritesheet:
+			var sheet_scale = sheet_config.get("scale", 0.35)
+			sprite.scale = Vector2(sheet_scale, sheet_scale)
+			# Use region_rect for pixel-perfect frames (avoids fractional hframes)
+			var hf = sheet_config.get("hframes", 1)
+			var vf = sheet_config.get("vframes", 1)
+			var tex_w = int(sprite.texture.get_width())
+			var tex_h = int(sprite.texture.get_height())
+			var frame_w = tex_w / hf  # integer division — no fractional bleed
+			var frame_h = tex_h / vf
+			sprite.region_enabled = true
+			sprite.region_rect = Rect2(0, 0, frame_w, frame_h)
+			# Bottom-anchor: offset so feet (frame bottom) stay fixed
+			sprite.offset = Vector2(0, -frame_h)
+			# Place feet at same Y as static sprite foot line
+			var static_path = CHARACTER_SPRITES.get(actor_id, "")
+			var foot_y := 64.0 * ACTOR_SCALE  # fallback: default 64px sprite at 2x
+			if static_path != "" and ResourceLoader.exists(static_path):
+				var static_tex = load(static_path)
+				foot_y = static_tex.get_height() * ACTOR_SCALE
+			sprite.position = Vector2(0, foot_y)
+			sprite_size = Vector2(frame_w * sheet_scale, foot_y)
+			# Start frame cycling via Timer (uses region_rect per frame)
+			_start_frame_animation(character, sprite, sheet_config)
+		else:
+			sprite.scale = Vector2(ACTOR_SCALE, ACTOR_SCALE)
+			if sprite.texture:
+				sprite_size = sprite.texture.get_size() * ACTOR_SCALE
+
 		actor_base_modulates[actor_id] = sprite.modulate
-		if sprite.texture:
-			sprite_size = sprite.texture.get_size() * ACTOR_SCALE
 		character.add_child(sprite)
 		actor_sprites[actor_id] = sprite
 		actor_base_positions[actor_id] = sprite.position
@@ -112,6 +162,8 @@ func create_character(data: Dictionary) -> Character:
 	name_lbl.position = Vector2(0, sprite_size.y + 4)
 	name_lbl.size = Vector2(max(sprite_size.x, 80), 20)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if pixel_font:
+		name_lbl.add_theme_font_override("font", pixel_font)
 	apply_name_style(name_lbl, false)
 	character.add_child(name_lbl)
 	actor_name_labels[actor_id] = name_lbl
@@ -127,6 +179,7 @@ func create_boss(data: Dictionary) -> Boss:
 	var actor_id = data.get("id", "")
 	if data.has("position"):
 		boss.position = data["position"]
+	boss.z_index = int(boss.position.y)
 
 	actor_nodes[actor_id] = boss
 	actor_root_positions[actor_id] = boss.position
@@ -175,6 +228,8 @@ func _create_boss_name_label(boss: Boss, data: Dictionary, visual_size: Vector2,
 	name_lbl.position = Vector2(0, visual_size.y + 6)
 	name_lbl.size = Vector2(max(visual_size.x, 120), 20)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if pixel_font:
+		name_lbl.add_theme_font_override("font", pixel_font)
 	apply_name_style(name_lbl, false)
 	boss.add_child(name_lbl)
 	actor_name_labels[actor_id] = name_lbl
@@ -216,3 +271,31 @@ func get_actor_position(actor_id: String) -> Vector2:
 
 func get_name_label(actor_id: String) -> Label:
 	return actor_name_labels.get(actor_id, null)
+
+
+## Start frame cycling on a spritesheet sprite via region_rect.
+## Uses integer-division frame widths to avoid fractional pixel bleed.
+func _start_frame_animation(parent: Node, sprite: Sprite2D, config: Dictionary) -> void:
+	var hf = config.get("hframes", 1)
+	var vf = config.get("vframes", 1)
+	var total_frames = hf * vf
+	var fps = config.get("fps", 6)
+	var tex_w = int(sprite.texture.get_width())
+	var tex_h = int(sprite.texture.get_height())
+	var frame_w = tex_w / hf
+	var frame_h = tex_h / vf
+	var timer = Timer.new()
+	timer.name = "FrameTimer"
+	timer.wait_time = 1.0 / fps
+	timer.one_shot = false
+	timer.autostart = true
+	# Store frame counter on the timer node (closures can't mutate local vars)
+	timer.set_meta("frame", 0)
+	timer.timeout.connect(func():
+		var f = (timer.get_meta("frame") + 1) % total_frames
+		timer.set_meta("frame", f)
+		var col = f % hf
+		var row = f / hf
+		sprite.region_rect = Rect2(col * frame_w, row * frame_h, frame_w, frame_h)
+	)
+	parent.add_child(timer)

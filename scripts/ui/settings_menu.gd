@@ -291,8 +291,7 @@ func close() -> void:
 	visible = false
 	_battle_scene.input_locked = _was_input_locked
 	if not _was_input_locked and _battle_scene.battle_menu:
-		var state = _battle_manager.battle_state.get("state", "")
-		if state == "PLAYER_TURN":
+		if _battle_scene.state == "PLAYER_TURN":
 			_battle_scene.battle_menu.set_enabled(true)
 
 

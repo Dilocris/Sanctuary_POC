@@ -12,7 +12,10 @@
       "Bash(for file in *.tres)",
       "Bash(do sed -i 's/\\\\[resource\\\\]/[resource]\\\\nscript = ExtResource\\(\"\"1\"\"\\)/' \"$file\")",
       "Bash(done)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(xxd:*)"
     ]
   }
 }

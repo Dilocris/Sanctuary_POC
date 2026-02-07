@@ -7,6 +7,23 @@ class_name BattleUIManager
 const AnimatedHealthBarClass = preload("res://scripts/ui/animated_health_bar.gd")
 const ResourceDotGridClass = preload("res://scripts/ui/resource_dot_grid.gd")
 
+# Pixel font (loaded once, applied to UI elements)
+var _pixel_font: Font
+var _pixel_font_bold: Font
+
+func _load_pixel_fonts() -> void:
+	if ResourceLoader.exists("res://assets/fonts/Silkscreen-Regular.ttf"):
+		_pixel_font = load("res://assets/fonts/Silkscreen-Regular.ttf")
+	if ResourceLoader.exists("res://assets/fonts/Silkscreen-Bold.ttf"):
+		_pixel_font_bold = load("res://assets/fonts/Silkscreen-Bold.ttf")
+
+
+## Apply pixel font to a Label if loaded.
+func _apply_pixel_font(label: Label, bold: bool = false) -> void:
+	var f = _pixel_font_bold if bold else _pixel_font
+	if f:
+		label.add_theme_font_override("font", f)
+
 signal phase_overlay_finished
 signal limit_overlay_finished
 
@@ -15,7 +32,7 @@ var _scene_root: Node
 var _battle_manager: BattleManager
 
 # UI Constants - Moved lower UI closer to bottom edge
-const LOWER_UI_TOP := 520
+const LOWER_UI_TOP := 492
 const PANEL_PADDING := 8
 const ROW_SPACING := 2
 const COLUMN_SPACING := 8
@@ -23,17 +40,31 @@ const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
 const INACTIVE_NAME_COLOR := Color(0.9, 0.9, 0.9)
 const ACTIVE_NAME_FONT_SIZE := 14
 const INACTIVE_NAME_FONT_SIZE := 12
-const HP_BAR_HEIGHT := 12
-const MP_BAR_HEIGHT := 8
-const BAR_WIDTH := 100
-const NAME_WIDTH := 70
+const HP_BAR_HEIGHT := 20
+const MP_BAR_HEIGHT := 14
+const BAR_WIDTH := 130
+const NAME_WIDTH := 62
 const MP_COLOR := Color(0.25, 0.45, 0.85)
+
+# Fixed column layout positions (within party panel inner area)
+const COL_NAME_X := 4
+const COL_SEP1_X := 68
+const COL_BARS_X := 72
+const COL_SEP2_X := 206
+const COL_RES_X := 210
+const COL_RES_W := 78     # 8 cols * (8+2) - 2 = 78
+const COL_SEP3_X := 292
+const COL_LB_X := 296
+const COL_LB_BAR_X := 316 # After "LB" label
+const COL_LB_BAR_W := 64
+const SEP_COLOR := Color(0.35, 0.35, 0.4, 0.4)
+const ROW_HEIGHT := 35
 
 # UI Elements
 var debug_panel: Control
 var debug_log: RichTextLabel
 var debug_toggle_btn: Button
-var party_status_panel: VBoxContainer
+var party_status_panel: Control
 var status_effects_display: Label
 var turn_order_display: Label
 var combat_log_display: Label
@@ -54,6 +85,8 @@ var _party_resource_grids: Dictionary = {} # actor_id -> ResourceDotGrid
 var _party_lb_bars: Dictionary = {}       # actor_id -> ProgressBar
 var _party_lb_texts: Dictionary = {}      # actor_id -> Label
 var _party_lb_fills: Dictionary = {}      # actor_id -> StyleBoxFlat
+var _party_lb_tweens: Dictionary = {}    # actor_id -> Tween (pulse when full)
+var _party_row_highlights: Dictionary = {} # actor_id -> ColorRect (active row bg)
 var _party_ui_initialized: bool = false
 
 # State
@@ -67,6 +100,7 @@ func setup(scene_root: Node, battle_manager: BattleManager, intent_duration: flo
 	_scene_root = scene_root
 	_battle_manager = battle_manager
 	enemy_intent_duration = intent_duration
+	_load_pixel_fonts()
 
 
 # ============================================================================
@@ -97,20 +131,20 @@ func create_game_ui() -> void:
 	var lower_ui_bg = ColorRect.new()
 	lower_ui_bg.color = Color(0, 0, 0, 0.7)
 	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 8)
-	lower_ui_bg.size = Vector2(1152, 136)
+	lower_ui_bg.size = Vector2(1152, 648 - LOWER_UI_TOP + 8)
 	lower_ui_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scene_root.add_child(lower_ui_bg)
 
 	# Party Status Panel (Bottom Right) - tighter layout
+	var panel_height = 648 - LOWER_UI_TOP
 	var panel_bg = Panel.new()
 	panel_bg.position = Vector2(580, LOWER_UI_TOP)
-	panel_bg.size = Vector2(560, 128)
+	panel_bg.size = Vector2(560, panel_height)
 	_scene_root.add_child(panel_bg)
 
-	party_status_panel = VBoxContainer.new()
+	party_status_panel = Control.new()
 	party_status_panel.position = Vector2(PANEL_PADDING, PANEL_PADDING)
-	party_status_panel.size = Vector2(544, 112)
-	party_status_panel.add_theme_constant_override("separation", ROW_SPACING)
+	party_status_panel.size = Vector2(544, panel_height - PANEL_PADDING * 2)
 	panel_bg.add_child(party_status_panel)
 
 	# Turn Order Display (Top Center)
@@ -118,6 +152,7 @@ func create_game_ui() -> void:
 	turn_order_display.position = Vector2(350, 10)
 	turn_order_display.size = Vector2(400, 30)
 	turn_order_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_pixel_font(turn_order_display)
 	_scene_root.add_child(turn_order_display)
 
 	# Status Effects Display (Centered below Turn Order)
@@ -125,6 +160,7 @@ func create_game_ui() -> void:
 	status_effects_display.position = Vector2(350, 40)
 	status_effects_display.size = Vector2(400, 30)
 	status_effects_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_pixel_font(status_effects_display)
 	_scene_root.add_child(status_effects_display)
 
 	# Combat Log Toast (Above Bottom UI)
@@ -133,6 +169,7 @@ func create_game_ui() -> void:
 	combat_log_display.size = Vector2(700, 30)
 	combat_log_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	combat_log_display.text = "Battle Start!"
+	_apply_pixel_font(combat_log_display)
 
 	var bg = ColorRect.new()
 	bg.show_behind_parent = true
@@ -154,6 +191,7 @@ func create_game_ui() -> void:
 	enemy_intent_bg.color = Color(0, 0, 0, 0.55)
 	enemy_intent_bg.anchor_right = 1.0
 	enemy_intent_bg.anchor_bottom = 1.0
+	_apply_pixel_font(enemy_intent_label)
 	enemy_intent_label.add_child(enemy_intent_bg)
 	_scene_root.add_child(enemy_intent_label)
 
@@ -171,6 +209,7 @@ func create_game_ui() -> void:
 	phase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	phase_label.size = Vector2(1152, 648)
 	phase_label.add_theme_font_size_override("font_size", 28)
+	_apply_pixel_font(phase_label, true)
 	phase_label.visible = false
 	phase_label.z_index = 101
 	_scene_root.add_child(phase_label)
@@ -189,6 +228,7 @@ func create_game_ui() -> void:
 	limit_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	limit_label.size = Vector2(1152, 648)
 	limit_label.add_theme_font_size_override("font_size", 30)
+	_apply_pixel_font(limit_label, true)
 	limit_label.visible = false
 	limit_label.z_index = 111
 	_scene_root.add_child(limit_label)
@@ -200,14 +240,17 @@ func create_game_ui() -> void:
 	battle_log_panel.scroll_active = false
 	battle_log_panel.scroll_following = true
 	battle_log_panel.add_theme_font_size_override("normal_font_size", 12)
+	if _pixel_font:
+		battle_log_panel.add_theme_font_override("normal_font", _pixel_font)
 	_scene_root.add_child(battle_log_panel)
 
 	# F1 hint
 	var f1_hint = Label.new()
 	f1_hint.text = "F1: Settings"
-	f1_hint.position = Vector2(1050, 628)
+	f1_hint.position = Vector2(1060, 632)
 	f1_hint.add_theme_font_size_override("font_size", 10)
 	f1_hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.6))
+	_apply_pixel_font(f1_hint)
 	_scene_root.add_child(f1_hint)
 
 
@@ -264,16 +307,20 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 
 	# First call: create persistent UI elements
 	if not _party_ui_initialized:
-		_create_party_ui(apply_name_style_func)
+		_create_party_ui()
 		_party_ui_initialized = true
 
 	# Update existing elements with current values
 	for actor in _battle_manager.battle_state.party:
 		var actor_id = actor.id
 
-		# Update name label style (active vs inactive)
+		# Update name label style (color only — no font size change to prevent overflow)
 		if _party_name_labels.has(actor_id):
-			apply_name_style_func.call(_party_name_labels[actor_id], actor_id == active_id)
+			var is_active = actor_id == active_id
+			_party_name_labels[actor_id].modulate = ACTIVE_NAME_COLOR if is_active else INACTIVE_NAME_COLOR
+		# Toggle row highlight
+		if _party_row_highlights.has(actor_id):
+			_party_row_highlights[actor_id].visible = actor_id == active_id
 
 		# Update HP bar (animated)
 		if _party_hp_bars.has(actor_id):
@@ -289,7 +336,7 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 			var res_val = _get_actor_resource_current(actor)
 			grid.set_value(res_val)
 
-		# Update LB bar
+		# Update LB bar + flash effect
 		if _party_lb_bars.has(actor_id):
 			_party_lb_bars[actor_id].value = actor.limit_gauge
 			if _party_lb_texts.has(actor_id):
@@ -297,8 +344,10 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 			if _party_lb_fills.has(actor_id):
 				if actor.limit_gauge >= 100:
 					_party_lb_fills[actor_id].bg_color = Color(0.2, 0.6, 1.0)
+					_start_lb_pulse(actor_id)
 				else:
 					_party_lb_fills[actor_id].bg_color = Color(0.4, 0.4, 0.4)
+					_stop_lb_pulse(actor_id)
 
 
 ## Get the current value of an actor's special resource.
@@ -328,45 +377,74 @@ func _get_actor_resource_max(actor) -> int:
 
 
 ## Creates the persistent party UI elements (called once).
-func _create_party_ui(apply_name_style_func: Callable) -> void:
+## Uses fixed-position Control layout for consistent column alignment.
+func _create_party_ui() -> void:
 	# Clear any existing children
 	for child in party_status_panel.get_children():
 		child.queue_free()
 
 	var active_id = _battle_manager.battle_state.get("active_character_id", "")
 
+	# Draw column separators (span full panel height)
+	var panel_h = party_status_panel.size.y
+	var panel_w = party_status_panel.size.x
+	for sep_x in [COL_SEP1_X, COL_SEP2_X, COL_SEP3_X]:
+		var sep = ColorRect.new()
+		sep.color = SEP_COLOR
+		sep.position = Vector2(sep_x, 0)
+		sep.size = Vector2(1, panel_h)
+		sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		party_status_panel.add_child(sep)
+
+	# Draw row separators between character lines
+	var party_size = _battle_manager.battle_state.party.size()
+	for i in range(1, party_size):
+		var row_sep = ColorRect.new()
+		row_sep.color = SEP_COLOR
+		row_sep.position = Vector2(0, i * ROW_HEIGHT)
+		row_sep.size = Vector2(panel_w, 1)
+		row_sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		party_status_panel.add_child(row_sep)
+
+	var row_idx := 0
 	for actor in _battle_manager.battle_state.party:
 		var actor_id = actor.id
+		var row_y = row_idx * ROW_HEIGHT
 
-		# Main row container
-		var hbox = HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", COLUMN_SPACING)
-		hbox.alignment = BoxContainer.ALIGNMENT_BEGIN
+		# --- Row highlight background (subtle tint for active character) ---
+		var row_bg = ColorRect.new()
+		row_bg.color = Color(1.0, 0.9, 0.4, 0.08)
+		row_bg.position = Vector2(0, row_y)
+		row_bg.size = Vector2(panel_w, ROW_HEIGHT)
+		row_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row_bg.visible = actor_id == active_id
+		_party_row_highlights[actor_id] = row_bg
+		party_status_panel.add_child(row_bg)
 
-		# Name label (narrower)
+		# --- Name label (fixed column, no size scaling) ---
 		var name_lbl = Label.new()
 		name_lbl.text = actor.display_name
-		name_lbl.custom_minimum_size = Vector2(NAME_WIDTH, 0)
+		name_lbl.position = Vector2(COL_NAME_X, row_y)
+		name_lbl.size = Vector2(NAME_WIDTH, ROW_HEIGHT)
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		name_lbl.add_theme_font_size_override("font_size", INACTIVE_NAME_FONT_SIZE)
-		name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		apply_name_style_func.call(name_lbl, actor_id == active_id)
+		name_lbl.clip_text = true
+		_apply_pixel_font(name_lbl)
+		name_lbl.modulate = ACTIVE_NAME_COLOR if actor_id == active_id else INACTIVE_NAME_COLOR
 		_party_name_labels[actor_id] = name_lbl
+		party_status_panel.add_child(name_lbl)
 
-		# Bars container (HP and MP stacked vertically)
-		var bars_vbox = VBoxContainer.new()
-		bars_vbox.add_theme_constant_override("separation", 1)
-		bars_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-
-		# HP bar (green, animated with rolling digits)
+		# --- HP/MP bars (fixed column) ---
 		var hp_bar = AnimatedHealthBarClass.new()
 		hp_bar.bar_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
 		hp_bar.custom_minimum_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
 		hp_bar.use_odometer = false
 		hp_bar.corner_radius = 3
+		hp_bar.custom_font = _pixel_font
+		hp_bar.position = Vector2(COL_BARS_X, row_y)
 		_party_hp_bars[actor_id] = hp_bar
-		bars_vbox.add_child(hp_bar)
+		party_status_panel.add_child(hp_bar)
 
-		# MP bar (blue, thinner — subordinate to HP)
 		if actor.stats["mp_max"] > 0:
 			var mp_bar = AnimatedHealthBarClass.new()
 			mp_bar.bar_size = Vector2(BAR_WIDTH, MP_BAR_HEIGHT)
@@ -374,44 +452,54 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 			mp_bar.main_color = MP_COLOR
 			mp_bar.use_odometer = false
 			mp_bar.corner_radius = 2
+			mp_bar.custom_font = _pixel_font
+			mp_bar.position = Vector2(COL_BARS_X, row_y + HP_BAR_HEIGHT + 1)
 			_party_mp_bars[actor_id] = mp_bar
-			bars_vbox.add_child(mp_bar)
+			party_status_panel.add_child(mp_bar)
 
-		# Resource dot grid (special resource)
+		# --- Resource dot grid (fixed column, 2 rows x 8 cols) ---
 		var res_max = _get_actor_resource_max(actor)
 		if res_max > 0:
 			var res_grid = ResourceDotGridClass.new()
 			res_grid.max_value = res_max
+			res_grid.fixed_columns = 8
 			res_grid.dot_size = 8
-			res_grid.dot_spacing = 3
+			res_grid.dot_spacing = 2
 			res_grid.row_spacing = 2
-			res_grid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			var grid_h = 2 * 8 + 1 * 2  # 18px
+			res_grid.position = Vector2(COL_RES_X, row_y + int((ROW_HEIGHT - grid_h) / 2))
 			_party_resource_grids[actor_id] = res_grid
+			party_status_panel.add_child(res_grid)
 
-		# LB bar (compact)
+		# --- LB section (fixed column, all aligned) ---
+		var lb_label = Label.new()
+		lb_label.text = "LB"
+		lb_label.add_theme_font_size_override("font_size", 9)
+		lb_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.8))
+		lb_label.position = Vector2(COL_LB_X, row_y)
+		lb_label.size = Vector2(18, ROW_HEIGHT)
+		lb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_apply_pixel_font(lb_label)
+		party_status_panel.add_child(lb_label)
+
 		var lb_bar = ProgressBar.new()
 		lb_bar.min_value = 0
 		lb_bar.max_value = 100
 		lb_bar.value = actor.limit_gauge
-		lb_bar.custom_minimum_size = Vector2(60, 10)
+		lb_bar.position = Vector2(COL_LB_BAR_X, row_y + int((ROW_HEIGHT - 14) / 2))
+		lb_bar.size = Vector2(COL_LB_BAR_W, 14)
+		lb_bar.custom_minimum_size = Vector2(COL_LB_BAR_W, 14)
 		lb_bar.show_percentage = false
-		lb_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 		var lb_bg = StyleBoxFlat.new()
 		lb_bg.bg_color = Color(0.15, 0.15, 0.15, 0.9)
-		lb_bg.corner_radius_top_left = 4
-		lb_bg.corner_radius_top_right = 4
-		lb_bg.corner_radius_bottom_left = 4
-		lb_bg.corner_radius_bottom_right = 4
+		lb_bg.set_corner_radius_all(4)
 
 		var lb_fill = StyleBoxFlat.new()
 		lb_fill.bg_color = Color(0.4, 0.4, 0.4)
 		if actor.limit_gauge >= 100:
 			lb_fill.bg_color = Color(0.2, 0.6, 1.0)
-		lb_fill.corner_radius_top_left = 4
-		lb_fill.corner_radius_top_right = 4
-		lb_fill.corner_radius_bottom_left = 4
-		lb_fill.corner_radius_bottom_right = 4
+		lb_fill.set_corner_radius_all(4)
 
 		lb_bar.add_theme_stylebox_override("background", lb_bg)
 		lb_bar.add_theme_stylebox_override("fill", lb_fill)
@@ -421,35 +509,25 @@ func _create_party_ui(apply_name_style_func: Callable) -> void:
 
 		var lb_text = Label.new()
 		lb_text.text = "%d%%" % actor.limit_gauge
-		lb_text.add_theme_font_size_override("font_size", 9)
+		lb_text.add_theme_font_size_override("font_size", 11)
 		lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lb_text.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_apply_pixel_font(lb_text)
 		lb_bar.add_child(lb_text)
 		_party_lb_texts[actor_id] = lb_text
 
-		# Assemble row: Name | Bars | Resource | (spacer) | LB
-		hbox.add_child(name_lbl)
-		hbox.add_child(bars_vbox)
-		if _party_resource_grids.has(actor_id):
-			hbox.add_child(_party_resource_grids[actor_id])
-		var spacer = Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		hbox.add_child(spacer)
-		hbox.add_child(lb_bar)
-		party_status_panel.add_child(hbox)
+		party_status_panel.add_child(lb_bar)
+		row_idx += 1
 
 	# Initialize all bars with current values (no animation on first display)
 	await _scene_root.get_tree().process_frame
 	for actor in _battle_manager.battle_state.party:
 		var actor_id = actor.id
-		# HP bar
 		if _party_hp_bars.has(actor_id):
 			_party_hp_bars[actor_id].initialize(actor.hp_current, actor.stats["hp_max"])
-		# MP bar
 		if _party_mp_bars.has(actor_id):
 			_party_mp_bars[actor_id].initialize(actor.mp_current, actor.stats["mp_max"])
-		# Resource grid
 		if _party_resource_grids.has(actor_id):
 			var res_max = _get_actor_resource_max(actor)
 			var res_cur = _get_actor_resource_current(actor)
@@ -603,3 +681,32 @@ func show_limit_overlay(action_id: String) -> void:
 
 func set_boss_hp_bar(bar: AnimatedHealthBar) -> void:
 	boss_hp_bar = bar
+
+
+# ============================================================================
+# LB BAR PULSE EFFECT
+# ============================================================================
+
+func _start_lb_pulse(actor_id: String) -> void:
+	if _party_lb_tweens.has(actor_id):
+		return  # Already pulsing
+	if not _party_lb_fills.has(actor_id):
+		return
+	var fill = _party_lb_fills[actor_id]
+	var tween = _scene_root.create_tween().set_loops()
+	tween.tween_method(func(t: float):
+		fill.bg_color = Color(0.2, 0.6, 1.0).lerp(Color(0.5, 0.85, 1.0), t)
+	, 0.0, 1.0, 0.5).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_method(func(t: float):
+		fill.bg_color = Color(0.5, 0.85, 1.0).lerp(Color(0.2, 0.6, 1.0), t)
+	, 0.0, 1.0, 0.5).set_ease(Tween.EASE_IN_OUT)
+	_party_lb_tweens[actor_id] = tween
+
+
+func _stop_lb_pulse(actor_id: String) -> void:
+	if not _party_lb_tweens.has(actor_id):
+		return
+	var tween = _party_lb_tweens[actor_id]
+	if tween and tween.is_valid():
+		tween.kill()
+	_party_lb_tweens.erase(actor_id)

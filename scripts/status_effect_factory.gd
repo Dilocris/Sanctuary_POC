@@ -5,6 +5,10 @@ static func poison(turns: int = 3, damage: int = 10) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.POISON, turns, damage, [StatusTags.NEGATIVE, StatusTags.DOT, StatusTags.CLEANSABLE])
 
 
+static func burn(turns: int = 2, damage: int = 8) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.BURN, turns, damage, [StatusTags.NEGATIVE, StatusTags.DOT, StatusTags.ELEMENTAL, StatusTags.CLEANSABLE])
+
+
 static func regen(turns: int = 4, heal: int = 15) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.REGEN, turns, heal, [StatusTags.POSITIVE, StatusTags.HOT])
 

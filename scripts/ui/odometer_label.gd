@@ -108,7 +108,7 @@ func set_value(new_value: int, animate: bool = true) -> void:
 	_current_value = new_value
 
 
-## Get the digit at position i (0 = ones, 1 = tens, etc.)
+ ## Get the digit at position i (0 = ones, 1 = tens, etc.)
 func _get_digit(value: int, position: int) -> int:
 	var divisor = int(pow(10, position))
 	return (value / divisor) % 10
