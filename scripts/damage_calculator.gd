@@ -11,6 +11,8 @@ const VARIANCE_MIN := 0.90
 const VARIANCE_MAX := 1.10
 const BASE_CRIT_CHANCE := 0.05
 const CRIT_MULTIPLIER := 2.0
+const BLESS_DEFAULT_BONUS_PCT := 0.18
+const INSPIRE_DEFAULT_BONUS_PCT := 0.35
 
 static func calculate_physical_damage(attacker: Node, defender: Node, multiplier: float) -> int:
 	var breakdown = calculate_physical_damage_breakdown(attacker, defender, multiplier)
@@ -46,9 +48,17 @@ static func calculate_physical_damage_breakdown(attacker: Node, defender: Node, 
 		variance += fire_bonus
 		components.append({"type": "buff", "label": "FIRE", "amount": fire_bonus})
 	if attacker.has_status(StatusEffectIds.BLESS):
-		var bless_bonus = randi_range(1, 4)
-		variance += bless_bonus
-		components.append({"type": "buff", "label": "BLESS", "amount": bless_bonus})
+		var bless_pct = _get_status_percent(attacker, StatusEffectIds.BLESS, BLESS_DEFAULT_BONUS_PCT)
+		var bless_bonus = int(round(base_after_clamp * bless_pct))
+		if bless_bonus > 0:
+			variance += bless_bonus
+			components.append({"type": "buff", "label": "BLESS", "amount": bless_bonus})
+	if attacker.has_status(StatusEffectIds.INSPIRE_ATTACK):
+		var inspire_pct = _get_status_percent(attacker, StatusEffectIds.INSPIRE_ATTACK, INSPIRE_DEFAULT_BONUS_PCT)
+		var inspire_bonus = int(round(base_after_clamp * inspire_pct))
+		if inspire_bonus > 0:
+			variance += inspire_bonus
+			components.append({"type": "buff", "label": "INSPIRE", "amount": inspire_bonus})
 
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
 		variance *= GUARD_STANCE_DAMAGE_REDUCTION
@@ -64,6 +74,23 @@ static func calculate_physical_damage_breakdown(attacker: Node, defender: Node, 
 		"total": total,
 		"components": components
 	}
+
+
+static func _get_status_percent(actor: Node, status_id: String, fallback_percent: float) -> float:
+	if actor.get("status_effects") == null:
+		return fallback_percent
+	for status in actor.status_effects:
+		if status is StatusEffect and status.id == status_id:
+			var value = int(status.value)
+			if value > 0:
+				return float(value) / 100.0
+			break
+		elif status is Dictionary and status.get("id", "") == status_id:
+			var dict_value = int(status.get("value", int(round(fallback_percent * 100.0))))
+			if dict_value > 0:
+				return float(dict_value) / 100.0
+			break
+	return fallback_percent
 
 
 static func _count_status(actor: Node, status_id: String) -> int:

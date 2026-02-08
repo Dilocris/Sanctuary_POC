@@ -146,10 +146,10 @@ const COL_BARS_X := 96
 const COL_SEP2_X := 254
 const COL_RES_X := 260
 const COL_SEP3_X := 324
-const COL_LB_X := 330
-const COL_LB_VALUE_X := 348
+const COL_LB_X := 326
+const COL_LB_VALUE_X := 370
 const LB_VALUE_BOX_W := 52
-const COL_STATUS_X := 406
+const COL_STATUS_X := 430
 const STATUS_ICON_SIZE := 14
 const STATUS_ICON_GAP := 3
 const SEP_COLOR := Color(0.35, 0.35, 0.4, 0.4)
@@ -275,6 +275,7 @@ func create_game_ui() -> void:
 	party_status_panel = Control.new()
 	party_status_panel.position = Vector2(PANEL_PADDING + 2, PANEL_PADDING + 2)
 	party_status_panel.size = Vector2(panel_bg.size.x - PANEL_PADDING * 2, panel_height - PANEL_PADDING * 2)
+	party_status_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel_bg.add_child(party_status_panel)
 
 	# Top turn order panel.
@@ -497,26 +498,36 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 		# Update HP bar (animated)
 		if _party_hp_bars.has(actor_id):
 			_party_hp_bars[actor_id].set_hp(actor.hp_current, actor.stats["hp_max"])
+			_party_hp_bars[actor_id].tooltip_text = "HP: %d/%d" % [actor.hp_current, actor.stats["hp_max"]]
 
 		# Update MP bar (animated)
 		if _party_mp_bars.has(actor_id) and actor.stats["mp_max"] > 0:
 			_party_mp_bars[actor_id].set_hp(actor.mp_current, actor.stats["mp_max"])
+			_party_mp_bars[actor_id].tooltip_text = "MP: %d/%d" % [actor.mp_current, actor.stats["mp_max"]]
 
 		# Update resource grid
 		if _party_resource_grids.has(actor_id):
 			var grid = _party_resource_grids[actor_id]
 			var res_val = _get_actor_resource_current(actor)
 			grid.set_value(res_val)
+			grid.tooltip_text = _resource_tooltip(actor)
 		_refresh_status_icons(actor)
 
 		# Update LB value box text.
+		if _party_lb_bars.has(actor_id):
+			_party_lb_bars[actor_id].value = actor.limit_gauge
 		if _party_lb_texts.has(actor_id):
 			if actor.limit_gauge >= 100:
 				_party_lb_texts[actor_id].text = "READY"
 				_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.95, 1.0, 1.0))
+				_start_lb_pulse(actor_id)
 			else:
 				_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
 				_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
+				_stop_lb_pulse(actor_id)
+				if _party_lb_fills.has(actor_id):
+					_party_lb_fills[actor_id].bg_color = Color(0.26, 0.58, 0.92, 0.95)
+			_party_lb_texts[actor_id].tooltip_text = "Limit Break Gauge: %d%%" % actor.limit_gauge
 
 
 ## Get the current value of an actor's special resource.
@@ -637,6 +648,8 @@ func _create_party_ui() -> void:
 		name_lbl.clip_text = true
 		_apply_pixel_font(name_lbl)
 		name_lbl.modulate = ACTIVE_NAME_COLOR if actor_id == active_id else INACTIVE_NAME_COLOR
+		name_lbl.tooltip_text = actor.display_name
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
 		_party_name_labels[actor_id] = name_lbl
 		party_status_panel.add_child(name_lbl)
 
@@ -649,7 +662,7 @@ func _create_party_ui() -> void:
 		hp_bar.custom_font = _pixel_font_bold if _pixel_font_bold else _pixel_font
 		hp_bar.static_text_font_size = 11
 		hp_bar.static_text_outline_size = 2
-		hp_bar.static_text_vertical_offset = -1
+		hp_bar.static_text_vertical_offset = 0
 		hp_bar.background_color = Color(0.09, 0.12, 0.17, 0.96)
 		var bars_total_h = HP_BAR_HEIGHT + MP_BAR_HEIGHT + 2
 		var bars_start_y = row_y + int((ROW_HEIGHT - bars_total_h) / 2)
@@ -662,12 +675,14 @@ func _create_party_ui() -> void:
 			mp_bar.bar_size = Vector2(BAR_WIDTH, MP_BAR_HEIGHT)
 			mp_bar.custom_minimum_size = Vector2(BAR_WIDTH, MP_BAR_HEIGHT)
 			mp_bar.main_color = MP_COLOR
+			mp_bar.low_hp_color = MP_COLOR
+			mp_bar.low_hp_threshold = -1.0
 			mp_bar.use_odometer = false
 			mp_bar.corner_radius = 2
 			mp_bar.custom_font = _pixel_font
-			mp_bar.static_text_font_size = 9
+			mp_bar.static_text_font_size = 10
 			mp_bar.static_text_outline_size = 1
-			mp_bar.static_text_vertical_offset = -1
+			mp_bar.static_text_vertical_offset = 0
 			mp_bar.background_color = Color(0.08, 0.1, 0.16, 0.95)
 			mp_bar.position = Vector2(COL_BARS_X, bars_start_y + HP_BAR_HEIGHT + 2)
 			_party_mp_bars[actor_id] = mp_bar
@@ -684,6 +699,7 @@ func _create_party_ui() -> void:
 			res_grid.row_spacing = 1
 			res_grid.full_texture = _skin_pip_full
 			res_grid.empty_texture = _skin_pip_empty
+			res_grid.mouse_filter = Control.MOUSE_FILTER_STOP
 			var grid_h = 2 * res_grid.dot_size + res_grid.row_spacing
 			res_grid.position = Vector2(COL_RES_X, row_y + int((ROW_HEIGHT - grid_h) / 2))
 			_party_resource_grids[actor_id] = res_grid
@@ -691,23 +707,57 @@ func _create_party_ui() -> void:
 
 		# --- LB section (label + value box, matching the lighter reference) ---
 		var lb_label = Label.new()
-		lb_label.text = "LB"
-		lb_label.add_theme_font_size_override("font_size", 10)
+		lb_label.text = "LIMIT\nBREAK"
+		lb_label.add_theme_font_size_override("font_size", 8)
 		lb_label.add_theme_color_override("font_color", Color(0.72, 0.78, 0.9))
 		lb_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 		lb_label.add_theme_constant_override("outline_size", 1)
 		lb_label.position = Vector2(COL_LB_X, row_y)
-		lb_label.size = Vector2(20, ROW_HEIGHT)
+		lb_label.size = Vector2(42, ROW_HEIGHT)
+		lb_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lb_label.tooltip_text = "Limit Break Gauge"
+		lb_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		_apply_pixel_font(lb_label)
 		party_status_panel.add_child(lb_label)
 
 		var lb_box = Panel.new()
 		lb_box.position = Vector2(COL_LB_VALUE_X, row_y + int((ROW_HEIGHT - 18) / 2))
 		lb_box.size = Vector2(LB_VALUE_BOX_W, 18)
-		lb_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lb_box.mouse_filter = Control.MOUSE_FILTER_STOP
+		lb_box.tooltip_text = "Limit Break Gauge"
 		lb_box.add_theme_stylebox_override("panel", _make_skin_style(_skin_lb_box, 5, 2))
 		party_status_panel.add_child(lb_box)
+
+		var lb_bar = ProgressBar.new()
+		lb_bar.min_value = 0
+		lb_bar.max_value = 100
+		lb_bar.value = actor.limit_gauge
+		lb_bar.show_percentage = false
+		lb_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lb_bar.offset_left = 2
+		lb_bar.offset_top = 2
+		lb_bar.offset_right = -2
+		lb_bar.offset_bottom = -2
+		lb_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var lb_bg = StyleBoxFlat.new()
+		lb_bg.bg_color = Color(0.09, 0.11, 0.15, 0.9)
+		lb_bg.corner_radius_top_left = 2
+		lb_bg.corner_radius_top_right = 2
+		lb_bg.corner_radius_bottom_left = 2
+		lb_bg.corner_radius_bottom_right = 2
+		var lb_fill = StyleBoxFlat.new()
+		lb_fill.bg_color = Color(0.26, 0.58, 0.92, 0.95)
+		lb_fill.corner_radius_top_left = 2
+		lb_fill.corner_radius_top_right = 2
+		lb_fill.corner_radius_bottom_left = 2
+		lb_fill.corner_radius_bottom_right = 2
+		lb_bar.add_theme_stylebox_override("background", lb_bg)
+		lb_bar.add_theme_stylebox_override("fill", lb_fill)
+		lb_bar.add_theme_stylebox_override("fg", lb_fill)
+		lb_box.add_child(lb_bar)
+		_party_lb_bars[actor_id] = lb_bar
+		_party_lb_fills[actor_id] = lb_fill
 
 		var lb_text = Label.new()
 		lb_text.text = "READY" if actor.limit_gauge >= 100 else "%d%%" % actor.limit_gauge
@@ -766,16 +816,18 @@ func _refresh_status_icons(actor: Character) -> void:
 			status_id = str(status.get("id", ""))
 		if status_id.is_empty():
 			continue
-		var icon = _build_status_icon(status_id)
+		var icon = _build_status_icon(status_id, status)
 		row.add_child(icon)
+	row.tooltip_text = _status_row_tooltip(actor)
 
 
-func _build_status_icon(status_id: String) -> Control:
+func _build_status_icon(status_id: String, status: Variant = null) -> Control:
 	var panel = Panel.new()
 	panel.custom_minimum_size = Vector2(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
 	panel.size = Vector2(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
 	panel.add_theme_stylebox_override("panel", _status_icon_style(status_id))
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.tooltip_text = _status_tooltip_text(status_id, status)
 
 	var txt = Label.new()
 	txt.text = _status_icon_text(status_id)
@@ -786,9 +838,88 @@ func _build_status_icon(status_id: String) -> Control:
 	txt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	txt.add_theme_constant_override("outline_size", 1)
 	txt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_pixel_font(txt, true)
 	panel.add_child(txt)
 	return panel
+
+
+func _status_tooltip_text(status_id: String, status: Variant) -> String:
+	var name = _format_status_effect_name(status_id)
+	var details = ""
+	match status_id:
+		StatusEffectIds.POISON:
+			details = "Takes damage each turn."
+		StatusEffectIds.BURN:
+			details = "Burning damage each turn."
+		StatusEffectIds.BLESS:
+			details = "Increases outgoing damage by a percent."
+		StatusEffectIds.REGEN:
+			details = "Recovers HP each turn."
+		StatusEffectIds.ATK_UP:
+			details = "Increases ATK."
+		StatusEffectIds.ATK_DOWN:
+			details = "Reduces ATK."
+		StatusEffectIds.STUN:
+			details = "Cannot act."
+		StatusEffectIds.CHARM:
+			details = "Temporarily unable to act."
+		StatusEffectIds.GUARD_STANCE:
+			details = "Higher defense, reduced damage taken, enables riposte."
+		StatusEffectIds.MAGE_ARMOR:
+			details = "Increases defense."
+		StatusEffectIds.FIRE_IMBUE:
+			details = "Attacks add fire damage and can inflict burn."
+		StatusEffectIds.INSPIRE_ATTACK:
+			details = "Next damage action gains bonus percent damage."
+		StatusEffectIds.GENIES_WRATH:
+			details = "Damaging spells are empowered and cost no MP for remaining charges."
+		StatusEffectIds.PATIENT_DEFENSE:
+			details = "Higher evasion."
+		StatusEffectIds.TAUNT:
+			details = "Draws enemy single-target attacks."
+		StatusEffectIds.DEFENDING:
+			details = "Temporarily reduces incoming damage."
+		_:
+			details = "Status effect."
+	var turns = _status_duration(status)
+	var turns_text = ""
+	if turns >= 0:
+		turns_text = "\nTurns: %d" % turns
+	return name + "\n" + details + turns_text
+
+
+func _status_duration(status: Variant) -> int:
+	if status is StatusEffect:
+		return int(status.duration)
+	if status is Dictionary:
+		return int(status.get("duration", -1))
+	return -1
+
+
+func _status_row_tooltip(actor: Character) -> String:
+	if actor == null or actor.status_effects.is_empty():
+		return "No active statuses."
+	var labels: Array[String] = []
+	for status in actor.status_effects:
+		var status_id = _status_id_from_variant(status)
+		if status_id != "":
+			labels.append(_format_status_effect_name(status_id))
+	return "Statuses: " + ", ".join(labels)
+
+
+func _resource_tooltip(actor: Character) -> String:
+	if actor == null:
+		return ""
+	if actor.resources.has("ki"):
+		return "Ki: %d/%d" % [actor.get_resource_current("ki"), actor.resources["ki"].get("max", 0)]
+	if actor.resources.has("superiority_dice"):
+		return "Superiority Dice: %d/%d" % [actor.get_resource_current("superiority_dice"), actor.resources["superiority_dice"].get("max", 0)]
+	if actor.resources.has("bardic_inspiration"):
+		return "Bardic Inspiration: %d/%d" % [actor.get_resource_current("bardic_inspiration"), actor.resources["bardic_inspiration"].get("max", 0)]
+	if actor.resources.has("sorcery_points"):
+		return "Sorcery Points: %d/%d" % [actor.get_resource_current("sorcery_points"), actor.resources["sorcery_points"].get("max", 0)]
+	return ""
 
 
 func _status_icon_style(status_id: String) -> StyleBoxFlat:
@@ -838,6 +969,8 @@ func _status_icon_color(status_id: String) -> Color:
 			return Color(0.34, 0.68, 0.86)
 		StatusEffectIds.TAUNT:
 			return Color(0.86, 0.24, 0.2)
+		StatusEffectIds.DEFENDING:
+			return Color(0.22, 0.72, 0.9)
 		_:
 			return Color(0.34, 0.34, 0.42)
 
@@ -874,6 +1007,8 @@ func _status_icon_text(status_id: String) -> String:
 			return "PD"
 		StatusEffectIds.TAUNT:
 			return "TA"
+		StatusEffectIds.DEFENDING:
+			return "DF"
 		_:
 			return "??"
 

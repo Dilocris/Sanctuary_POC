@@ -64,7 +64,7 @@ func _queue_riposte(action: Dictionary) -> void:
 		"priority": PRIORITY_RIPOSTE,
 		"actor_id": defender.id,
 		"target_id": action.get("actor_id", ""),
-		"multiplier": 0.6
+		"multiplier": _battle_manager.RIPOSTE_DAMAGE_MULTIPLIER
 	})
 
 

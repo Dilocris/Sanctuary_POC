@@ -1,7 +1,7 @@
 <!--
 DOC_ID: PROJECT_HANDOFF
 STATUS: ACTIVE - High-level status snapshot
-LAST_UPDATED: 2026-02-04
+LAST_UPDATED: 2026-02-08
 SUPERSEDES: archive/PHASE_3_REFINEMENTS.md, archive/IMPLEMENTATION_PLAN_PHASE_4.md
 SUPERSEDED_BY: None
 
@@ -21,8 +21,15 @@ QUICK REFERENCE:
 
 # Project Handoff - Agent Swap Complete
 
-## Date: 2026-02-03
-## Status: Phase 3 Logic Implemented + Phase 4 UI/Feedback Polish In Progress
+## Date: 2026-02-08
+## Status: Combat Prototype Active - Production Backlog Formalized
+
+### Roadmap Update (Production Plan)
+- `docs/ROADMAP.md` has been refactored into a ticketized production backlog with:
+  - milestone sequencing
+  - file/system scope per ticket
+  - measurable acceptance criteria
+  - locked design decisions and quality gates
 
 ### Procedure Update (Parser Safety)
 - After **any** `.gd` edit, run:

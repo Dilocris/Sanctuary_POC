@@ -202,6 +202,7 @@ func _ready() -> void:
 	battle_manager.active_character_changed.connect(_on_active_character_changed)
 	battle_manager.action_enqueued.connect(_on_action_enqueued)
 	battle_manager.action_executed.connect(_on_action_executed)
+	battle_manager.reaction_executed.connect(_on_reaction_executed)
 	battle_manager.battle_ended.connect(_on_battle_ended)
 	battle_manager.phase_changed.connect(_on_phase_changed)
 	battle_manager.status_tick.connect(_on_status_tick)
@@ -440,6 +441,8 @@ func _on_message_added(text: String) -> void:
 		debug_log.add_text(text + "\n")
 	if combat_log_display:
 		combat_log_display.text = text
+	if ui_manager and _is_priority_combat_message(text):
+		ui_manager.show_combat_log_toast(text)
 	_update_battle_log()
 
 func _on_turn_order_updated(order: Array) -> void:
@@ -502,6 +505,28 @@ func _on_action_executed(result: Dictionary) -> void:
 	pass
 
 
+func _on_reaction_executed(payload: Dictionary) -> void:
+	var reaction_id = _dict_get(payload, "reaction_id", "")
+	var actor_id = _dict_get(payload, "actor_id", "")
+	var target_id = _dict_get(payload, "target_id", "")
+	var damage = int(_dict_get(payload, "damage", 0))
+	if reaction_id == "riposte":
+		if actor_id != "":
+			_play_action_whip(actor_id)
+		if target_id != "" and damage > 0:
+			var components = _dict_get(payload, "damage_components", [])
+			var rendered_components := 0
+			if components is Array and not components.is_empty():
+				rendered_components = animation_controller.spawn_damage_components(target_id, components)
+			if rendered_components <= 0:
+				_spawn_damage_numbers(target_id, [damage])
+			_play_hit_shake(target_id)
+			var target_sprite = actor_sprites.get(target_id, null)
+			game_feel_controller.on_damage_dealt(damage, target_sprite)
+		elif target_id != "" and damage <= 0:
+			_spawn_miss_text(target_id)
+
+
 ## Show damage numbers, healing text, and status effects for an action payload.
 func _show_action_visuals(payload: Dictionary) -> void:
 	var target_id = _dict_get(payload, "target_id", "")
@@ -517,49 +542,76 @@ func _show_action_visuals(payload: Dictionary) -> void:
 			var mt_components = hit_data.get("components", [])
 			var mt_target = battle_manager.get_actor_by_id(mt_id)
 			if mt_target:
-				_spawn_damage_numbers(mt_id, [mt_dmg])
-				if mt_components is Array and not mt_components.is_empty():
-					animation_controller.spawn_damage_components(mt_id, mt_components)
-				_play_hit_shake(mt_id)
-				var mt_sprite = actor_sprites.get(mt_id, null)
-				game_feel_controller.on_damage_dealt(mt_dmg, mt_sprite)
-				if mt_target.is_ko():
-					game_feel_controller.on_finishing_blow(mt_sprite)
+				var mt_damage_int = int(mt_dmg)
+				if mt_damage_int <= 0:
+					_spawn_miss_text(mt_id)
+				else:
+					var rendered_components := 0
+					if mt_components is Array and not mt_components.is_empty():
+						rendered_components = animation_controller.spawn_damage_components(mt_id, mt_components)
+					if rendered_components <= 0:
+						_spawn_damage_numbers(mt_id, [mt_damage_int])
+					_play_hit_shake(mt_id)
+					var mt_sprite = actor_sprites.get(mt_id, null)
+					game_feel_controller.on_damage_dealt(mt_damage_int, mt_sprite)
+					if mt_target.is_ko():
+						game_feel_controller.on_finishing_blow(mt_sprite)
 		var mt_total = _dict_get(payload, "damage_total", 0)
-		pending_damage_messages.append("Damage: " + str(mt_total))
+		if int(mt_total) > 0:
+			pending_damage_messages.append("Damage: " + str(mt_total))
+		else:
+			pending_damage_messages.append("Miss")
 	elif payload.has("damage_instances"):
 		var instances = _dict_get(payload, "damage_instances", [])
 		var components_by_hit = _dict_get(payload, "damage_components_by_hit", [])
 		if target:
-			_spawn_damage_numbers(target_id, instances)
-			if components_by_hit is Array:
-				for comp_set in components_by_hit:
-					if comp_set is Array and not comp_set.is_empty():
-						animation_controller.spawn_damage_components(target_id, comp_set)
-			_play_hit_shake(target_id)
 			var total_dmg = 0
-			for hit in instances:
-				total_dmg += int(hit)
-			var target_sprite = actor_sprites.get(target_id, null)
-			game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
-			if target.is_ko():
-				game_feel_controller.on_finishing_blow(target_sprite)
+			for i in range(instances.size()):
+				var hit_value = int(instances[i])
+				var hit_components: Array = []
+				if components_by_hit is Array and i < components_by_hit.size() and components_by_hit[i] is Array:
+					hit_components = components_by_hit[i]
+				if hit_value <= 0:
+					_spawn_miss_text(target_id)
+					continue
+				total_dmg += hit_value
+				var rendered_components := 0
+				if not hit_components.is_empty():
+					rendered_components = animation_controller.spawn_damage_components(target_id, hit_components)
+				if rendered_components <= 0:
+					_spawn_damage_numbers(target_id, [hit_value])
+			if total_dmg > 0:
+				_play_hit_shake(target_id)
+				var target_sprite = actor_sprites.get(target_id, null)
+				game_feel_controller.on_damage_dealt(total_dmg, target_sprite)
+				if target.is_ko():
+					game_feel_controller.on_finishing_blow(target_sprite)
 		var total_instances = 0
 		for hit in instances:
 			total_instances += int(hit)
-		pending_damage_messages.append("Damage: " + str(total_instances))
+		if total_instances > 0:
+			pending_damage_messages.append("Damage: " + str(total_instances))
+		else:
+			pending_damage_messages.append("Miss")
 	elif payload.has("damage"):
 		if payload.has("hit") and not bool(payload["hit"]):
 			if target:
 				_spawn_miss_text(target_id)
 			pending_damage_messages.append("Miss")
 			return
-		var dmg = payload["damage"]
+		var dmg = int(payload["damage"])
+		if dmg <= 0:
+			if target:
+				_spawn_miss_text(target_id)
+			pending_damage_messages.append("Miss")
+			return
 		if target:
-			_spawn_damage_numbers(target_id, [dmg])
 			var damage_components = _dict_get(payload, "damage_components", [])
+			var rendered_components := 0
 			if damage_components is Array and not damage_components.is_empty():
-				animation_controller.spawn_damage_components(target_id, damage_components)
+				rendered_components = animation_controller.spawn_damage_components(target_id, damage_components)
+			if rendered_components <= 0:
+				_spawn_damage_numbers(target_id, [dmg])
 			_play_hit_shake(target_id)
 			var target_sprite = actor_sprites.get(target_id, null)
 			game_feel_controller.on_damage_dealt(dmg, target_sprite)
@@ -571,28 +623,24 @@ func _show_action_visuals(payload: Dictionary) -> void:
 	if payload.has("healed"):
 		var heal = payload["healed"]
 		if target:
-			_create_floating_text(target.position, str(heal), Color.GREEN)
+			_create_floating_text(target.position, str(heal), Color.GREEN, target_id)
 		pending_effect_messages.append("Heal: " + str(heal))
 
 	# Handle Status/Buffs (Simplified)
 	if payload.has("buff"):
 		var buff_name = _format_status_string(str(payload["buff"]))
-		if target: # Self buff usually
-			_create_floating_text(target.position, "+" + buff_name, Color.CYAN)
-		_create_status_indicator(_dict_get(payload, "attacker_id", _dict_get(payload, "target_id", "")))
+		_create_status_indicator(_dict_get(payload, "target_id", _dict_get(payload, "attacker_id", "")), buff_name.to_upper())
 		pending_status_messages.append("Buff: " + buff_name)
 	elif payload.has("debuff"):
 		var debuff_name = _format_status_string(str(payload["debuff"]))
 		if target:
-			_create_floating_text(target.position, "-" + debuff_name, Color.ORANGE)
 			_play_hit_shake(target_id)
-		_create_status_indicator(_dict_get(payload, "target_id", ""))
+		_create_status_indicator(_dict_get(payload, "target_id", ""), debuff_name.to_upper())
 		pending_status_messages.append("Debuff: " + debuff_name)
 	elif payload.has("stun_applied") and payload["stun_applied"]:
 		if target:
-			_create_floating_text(target.position, "STUNNED", Color.YELLOW)
 			_play_hit_shake(target_id)
-		_create_status_indicator(_dict_get(payload, "target_id", ""))
+		_create_status_indicator(_dict_get(payload, "target_id", ""), "STUNNED")
 		pending_status_messages.append("Status: Stun")
 
 
@@ -614,14 +662,15 @@ func _on_status_tick(actor_id: String, amount: int, kind: String) -> void:
 	if actor == null:
 		return
 	if kind == "DOT":
-		_create_status_tick_text(actor.position, str(amount), Color(0.6, 0.2, 0.9))
+		_create_status_tick_text(actor.position, str(amount), Color(0.6, 0.2, 0.9), actor_id)
 	elif kind == "HOT":
-		_create_status_tick_text(actor.position, str(amount), Color(0.2, 0.8, 0.3))
+		_create_status_tick_text(actor.position, str(amount), Color(0.2, 0.8, 0.3), actor_id)
 
 func _on_phase_changed(phase: int) -> void:
 	input_locked = true
 	battle_menu.set_enabled(false)
 	game_feel_controller.on_phase_transition()
+	message_log("State -> PHASE " + str(phase))
 	_show_phase_overlay(phase)
 
 func _show_phase_overlay(phase: int) -> void:
@@ -861,11 +910,19 @@ func _determine_target_mode(tags: Array) -> String:
 
 
 func _determine_target_pool(tags: Array, _action_id: String) -> Array:
-	if tags.has(ActionTags.ALL_ALLIES) or tags.has(ActionTags.BUFF) or tags.has(ActionTags.HEALING) or tags.has(ActionTags.SELF):
+	if tags.has(ActionTags.SELF):
+		var self_actor = battle_manager.get_actor_by_id(active_player_id)
+		return [self_actor] if self_actor != null else []
+	# Healing actions may target KO allies for revive-style effects.
+	if tags.has(ActionTags.HEALING):
 		return battle_manager.battle_state.party
+	# Non-healing ally buffs should only target living allies.
+	if tags.has(ActionTags.ALL_ALLIES) or tags.has(ActionTags.BUFF):
+		return battle_manager.get_alive_party()
+	# Enemy targets should never include KO enemies.
 	if tags.has(ActionTags.ALL_ENEMIES) or tags.has(ActionTags.PHYSICAL) or tags.has(ActionTags.MAGICAL):
-		return battle_manager.battle_state.enemies
-	return battle_manager.battle_state.enemies
+		return battle_manager.get_alive_enemies()
+	return battle_manager.get_alive_enemies()
 
 
 func _get_target_node(actor_id: String) -> Node2D:
@@ -884,7 +941,7 @@ func _get_sprite_anchor(actor_id: String) -> Vector2:
 	return Vector2.ZERO
 
 
-func _create_status_indicator(actor_id: String) -> void:
+func _create_status_indicator(actor_id: String, status_text: String = "STATUS") -> void:
 	if actor_id == "":
 		return
 	var anchor = _get_sprite_anchor(actor_id)
@@ -893,7 +950,7 @@ func _create_status_indicator(actor_id: String) -> void:
 		if actor:
 			anchor = actor.global_position
 	if anchor != Vector2.ZERO:
-		_create_floating_text(anchor, "STATUS", Color.SKY_BLUE)
+		_create_floating_text(anchor, status_text, Color.SKY_BLUE, actor_id)
 
 
 func _format_status_string(raw: String) -> String:
@@ -920,6 +977,8 @@ func _update_menu_disables(actor: Character) -> void:
 				disabled[id] = "Not enough " + action.resource_type.capitalize() + "."
 				continue
 		var mp_cost = _dict_get(action, "mp_cost", 0)
+		if actor.id == "catraca" and actor.has_status(StatusEffectIds.GENIES_WRATH) and id in [ActionIds.CAT_FIRE_BOLT, ActionIds.CAT_FIREBALL] and mp_cost > 0:
+			mp_cost = 0
 		if mp_cost > 0 and actor.mp_current < mp_cost:
 			disabled[id] = "Not enough MP."
 			continue
@@ -930,7 +989,7 @@ func _update_menu_disables(actor: Character) -> void:
 			disabled[id] = "Requires 2+ enemies."
 			continue
 		if actor.id == "ludwig" and actor.has_status(StatusEffectIds.GUARD_STANCE):
-			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH, ActionIds.LUD_RALLY, ActionIds.LUD_TAUNT]:
+			if id in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
 				disabled[id] = "Guard Stance active."
 				continue
 		var tags = _dict_get(action, "tags", [])
@@ -946,7 +1005,31 @@ func _execute_next_action() -> void:
 	var payload = _dict_get(result, "payload", result)
 	message_log("Action Result: " + str(payload))
 	if _dict_get(result, "ok", false) == false:
+		var err = str(_dict_get(result, "error", "action_failed"))
+		message_log("Action failed: " + err)
 		input_locked = false
+		target_cursor.deactivate()
+		# Best UX: failed player actions should not consume the turn.
+		if _is_party_member(active_player_id):
+			var failed_actor = battle_manager.get_actor_by_id(active_player_id)
+			if failed_actor != null and not failed_actor.is_ko():
+				battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
+				battle_menu.set_enabled(true)
+				battle_menu.setup(failed_actor)
+				_update_menu_disables(failed_actor)
+				return
+		# Fallback for non-player turns: advance to avoid deadlock.
+		battle_manager.advance_state(BattleManager.BattleState.TURN_END)
+		var prev_turn_count = battle_manager.battle_state.turn_count
+		battle_manager.advance_turn()
+		await get_tree().create_timer(0.9).timeout
+		if battle_manager.battle_state.turn_count > prev_turn_count:
+			battle_manager.advance_state(BattleManager.BattleState.ROUND_END)
+			battle_manager.advance_state(BattleManager.BattleState.ROUND_INIT)
+		else:
+			battle_manager.advance_state(BattleManager.BattleState.TURN_START)
+		_process_turn_loop()
+		return
 	if _dict_get(payload, "metamagic", "") != "":
 		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
 		if actor_meta:
@@ -997,6 +1080,18 @@ func message_log(msg: String) -> void:
 		combat_log_tween = create_tween()
 		combat_log_tween.tween_interval(3.0)
 		combat_log_tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.5)
+
+
+func _is_priority_combat_message(text: String) -> bool:
+	if text.begins_with("State ->"):
+		return true
+	if text.begins_with("REACTION:"):
+		return true
+	if text.findn("riposte") != -1:
+		return true
+	if text.findn("phase") != -1:
+		return true
+	return false
 
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
 	return ActionFactory.create_action(id, actor, targets)
@@ -1101,8 +1196,8 @@ func _get_turn_header() -> String:
 
 
 
-func _create_floating_text(pos: Vector2, text: String, color: Color) -> void:
-	animation_controller.create_floating_text(pos, text, color)
+func _create_floating_text(pos: Vector2, text: String, color: Color, anchor_id: String = "") -> void:
+	animation_controller.create_floating_text(pos, text, color, anchor_id)
 
 func _is_party_member(actor_id: String) -> bool:
 	for member in battle_manager.battle_state.party:
@@ -1116,11 +1211,11 @@ func _spawn_damage_numbers(target_id: String, damages: Array) -> void:
 func _spawn_miss_text(target_id: String) -> void:
 	animation_controller.spawn_miss_text(target_id)
 
-func _create_damage_text(pos: Vector2, text: String) -> void:
-	animation_controller.create_damage_text(pos, text)
+func _create_damage_text(pos: Vector2, text: String, anchor_id: String = "") -> void:
+	animation_controller.create_damage_text(pos, text, 0, anchor_id)
 
-func _create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
-	animation_controller.create_status_tick_text(pos, text, color)
+func _create_status_tick_text(pos: Vector2, text: String, color: Color, anchor_id: String = "") -> void:
+	animation_controller.create_status_tick_text(pos, text, color, anchor_id)
 
 func _update_active_idle_motion(active_id: String) -> void:
 	animation_controller.update_active_idle_motion(active_id)

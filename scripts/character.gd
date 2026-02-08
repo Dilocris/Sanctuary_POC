@@ -54,6 +54,8 @@ func is_ko() -> bool:
 func apply_damage(amount: int) -> void:
 	if amount <= 0:
 		return
+	var mitigated = int(round(float(amount) * _get_damage_taken_multiplier()))
+	amount = max(1, mitigated)
 	var was_ko = is_ko()
 	hp_current = max(0, hp_current - amount)
 	emit_signal("hp_changed", hp_current, stats["hp_max"])
@@ -196,6 +198,22 @@ func _get_status_id(status: Variant) -> String:
 	if status is Dictionary:
 		return status.get("id", "")
 	return ""
+
+
+func _get_status_value(status: Variant) -> int:
+	if status is StatusEffect:
+		return int(status.value)
+	if status is Dictionary:
+		return int(status.get("value", 0))
+	return 0
+
+
+func _get_damage_taken_multiplier() -> float:
+	var reduction := 0.0
+	for status in status_effects:
+		if _get_status_id(status) == StatusEffectIds.DEFENDING:
+			reduction = max(reduction, float(_get_status_value(status)) / 100.0)
+	return clamp(1.0 - reduction, 0.05, 1.0)
 
 
 func _get_status_evasion_bonus() -> float:

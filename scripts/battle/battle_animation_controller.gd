@@ -30,6 +30,18 @@ var _attack_playing: Dictionary = {}      # actor_id -> true while attack anim i
 var _is_shutting_down: bool = false
 var _pixel_font: Font
 var _pixel_font_bold: Font
+var _float_font: Font
+var _float_layer: CanvasLayer
+var _float_lane_index: Dictionary = {}
+var _float_lane_last_ms: Dictionary = {}
+const FLOAT_LANE_RESET_MS := 320
+const FLOAT_LANE_OFFSETS := [
+	Vector2(0, 0),
+	Vector2(16, -6),
+	Vector2(-16, -8),
+	Vector2(10, -15),
+	Vector2(-10, -16)
+]
 
 
 func has_spritesheet_idle(actor_id: String) -> bool:
@@ -77,6 +89,7 @@ func setup(
 	_actor_root_positions = actor_root_positions
 	_is_shutting_down = false
 	_load_float_fonts()
+	_ensure_float_layer()
 
 
 func _load_float_fonts() -> void:
@@ -84,12 +97,22 @@ func _load_float_fonts() -> void:
 		_pixel_font = load("res://assets/fonts/Silkscreen-Regular.ttf")
 	if ResourceLoader.exists("res://assets/fonts/Silkscreen-Bold.ttf"):
 		_pixel_font_bold = load("res://assets/fonts/Silkscreen-Bold.ttf")
+	# Floating combat text uses the same sans-serif fallback used by standard UI controls.
+	if ThemeDB.fallback_font != null:
+		_float_font = ThemeDB.fallback_font
+	else:
+		_float_font = _pixel_font_bold if _pixel_font_bold != null else _pixel_font
 
 
 func shutdown() -> void:
 	_is_shutting_down = true
 	# Invalidate global idle loop tokens so delayed callbacks no-op.
 	_global_idle_tokens.clear()
+	_float_lane_index.clear()
+	_float_lane_last_ms.clear()
+	if _float_layer != null and is_instance_valid(_float_layer):
+		_float_layer.queue_free()
+	_float_layer = null
 	# Kill any live tweens we own.
 	for actor_id in _actor_sprites.keys():
 		cleanup_actor_tweens(actor_id)
@@ -102,32 +125,49 @@ func _can_use_scene_root() -> bool:
 func _safe_add_to_scene(node: Node) -> bool:
 	if not _can_use_scene_root():
 		return false
-	_scene_root.add_child(node)
+	_ensure_float_layer()
+	if _float_layer != null and is_instance_valid(_float_layer):
+		_float_layer.add_child(node)
+	else:
+		_scene_root.add_child(node)
 	return true
+
+
+func _ensure_float_layer() -> void:
+	if not _can_use_scene_root():
+		return
+	if _float_layer != null and is_instance_valid(_float_layer):
+		return
+	_float_layer = CanvasLayer.new()
+	_float_layer.name = "CombatFloatLayer"
+	_float_layer.layer = 30
+	_scene_root.add_child(_float_layer)
 
 
 # ============================================================================
 # FLOATING TEXT
 # ============================================================================
 
-func create_floating_text(pos: Vector2, text: String, color: Color) -> void:
+func create_floating_text(pos: Vector2, text: String, color: Color, anchor_id: String = "") -> void:
 	if not _can_use_scene_root():
 		return
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
-	label.position = pos + Vector2(0, -50)
-	label.add_theme_font_size_override("font_size", 24)
-	if _pixel_font:
-		label.add_theme_font_override("font", _pixel_font)
+	label.position = _reserve_float_position(anchor_id, pos + Vector2(0, -50))
+	label.add_theme_font_size_override("font_size", 22)
+	if _float_font:
+		label.add_theme_font_override("font", _float_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_constant_override("outline_size", 3)
+	label.z_as_relative = false
+	label.z_index = 500
 	if not _safe_add_to_scene(label):
 		return
 
 	var tween = _scene_root.create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 46, 1.22)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.22)
 	tween.tween_callback(label.queue_free)
 
 
@@ -146,16 +186,19 @@ func spawn_damage_numbers(target_id: String, damages: Array) -> void:
 		timer.timeout.connect(func ():
 			if not _can_use_scene_root():
 				return
-			create_damage_text(pos, str(dmg_val), dmg_val)
+			if dmg_val <= 0:
+				create_miss_text(pos, target_id)
+			else:
+				create_damage_text(pos, str(dmg_val), dmg_val, target_id)
 		)
 
 
 const HEAVY_DAMAGE_THRESHOLD := 50
-const NORMAL_DAMAGE_FONT := 32
-const HEAVY_DAMAGE_FONT := 44
-const MISS_FONT := 30
+const NORMAL_DAMAGE_FONT := 30
+const HEAVY_DAMAGE_FONT := 38
+const MISS_FONT := 28
 
-func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> void:
+func create_damage_text(pos: Vector2, text: String, damage_value: int = 0, anchor_id: String = "") -> void:
 	if not _can_use_scene_root():
 		return
 	var is_heavy = damage_value >= HEAVY_DAMAGE_THRESHOLD
@@ -165,14 +208,14 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
-	label.position = pos + Vector2(0, -64)
+	label.position = _reserve_float_position(anchor_id, pos + Vector2(0, -64))
 	label.add_theme_font_size_override("font_size", font_size)
-	if is_heavy and _pixel_font_bold:
-		label.add_theme_font_override("font", _pixel_font_bold)
-	elif _pixel_font:
-		label.add_theme_font_override("font", _pixel_font)
+	if _float_font:
+		label.add_theme_font_override("font", _float_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 3 if is_heavy else 2)
+	label.add_theme_constant_override("outline_size", 3)
+	label.z_as_relative = false
+	label.z_index = 500
 	if not _safe_add_to_scene(label):
 		return
 
@@ -182,8 +225,8 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 		label.pivot_offset = label.size / 2.0
 		label.scale = Vector2(1.3, 1.3)
 		tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 48, 1.26)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.26)
 	tween.tween_callback(label.queue_free)
 
 
@@ -193,62 +236,67 @@ func spawn_miss_text(target_id: String) -> void:
 	var actor = _battle_manager.get_actor_by_id(target_id)
 	if actor == null:
 		return
-	create_miss_text(actor.position)
+	create_miss_text(actor.position, target_id)
 
 
-func create_miss_text(pos: Vector2) -> void:
+func create_miss_text(pos: Vector2, anchor_id: String = "") -> void:
 	if not _can_use_scene_root():
 		return
 	var label = Label.new()
 	label.text = "MISS"
 	label.modulate = Color(0.9, 0.95, 1.0)
-	label.position = pos + Vector2(0, -64)
+	label.position = _reserve_float_position(anchor_id, pos + Vector2(0, -64))
 	label.add_theme_font_size_override("font_size", MISS_FONT)
-	if _pixel_font_bold:
-		label.add_theme_font_override("font", _pixel_font_bold)
+	if _float_font:
+		label.add_theme_font_override("font", _float_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 3)
+	label.z_as_relative = false
+	label.z_index = 500
 	if not _safe_add_to_scene(label):
 		return
 
 	var tween = _scene_root.create_tween()
 	label.pivot_offset = label.size / 2.0
 	label.scale = Vector2(1.2, 1.2)
-	tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.15).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	tween.parallel().tween_property(label, "position:y", label.position.y - 45, 0.9)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
+	tween.parallel().tween_property(label, "scale", Vector2.ONE, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 40, 1.15)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.15)
 	tween.tween_callback(label.queue_free)
 
 
-func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
+func create_status_tick_text(pos: Vector2, text: String, color: Color, anchor_id: String = "") -> void:
 	if not _can_use_scene_root():
 		return
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
-	label.position = pos + Vector2(0, -40)
+	label.position = _reserve_float_position(anchor_id, pos + Vector2(0, -40))
 	label.add_theme_font_size_override("font_size", 22)
-	if _pixel_font:
-		label.add_theme_font_override("font", _pixel_font)
+	if _float_font:
+		label.add_theme_font_override("font", _float_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_constant_override("outline_size", 3)
+	label.z_as_relative = false
+	label.z_index = 500
 	if not _safe_add_to_scene(label):
 		return
 	var tween = _scene_root.create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 30, 0.9)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 28, 1.12)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.12)
 	tween.tween_callback(label.queue_free)
 
 
-func spawn_damage_components(target_id: String, components: Array) -> void:
+func spawn_damage_components(target_id: String, components: Array) -> int:
 	if not _can_use_scene_root():
-		return
+		return 0
 	if components.is_empty():
-		return
+		return 0
 	var actor = _battle_manager.get_actor_by_id(target_id)
 	if actor == null:
-		return
+		return 0
 	var index := 0
+	var created := 0
 	for component in components:
 		if not (component is Dictionary):
 			continue
@@ -257,15 +305,17 @@ func spawn_damage_components(target_id: String, components: Array) -> void:
 			continue
 		var source_type = str(component.get("type", "normal"))
 		var color = _component_color(source_type)
-		var text = "+" + str(amount)
+		var text = str(amount) if source_type == "normal" else "+" + str(amount)
 		var delay = 0.08 * float(index)
 		var offset = Vector2(46 + (10 * index), -84 - (8 * index))
 		var timer = _scene_root.get_tree().create_timer(delay)
 		var pos = actor.position + offset
 		timer.timeout.connect(func():
-			_create_component_text(pos, text, color)
+			_create_component_text(pos, text, color, target_id)
 		)
 		index += 1
+		created += 1
+	return created
 
 
 func _component_color(source_type: String) -> Color:
@@ -282,26 +332,40 @@ func _component_color(source_type: String) -> Color:
 			return Color(1.0, 0.56, 0.18)
 
 
-func _create_component_text(pos: Vector2, text: String, color: Color) -> void:
+func _create_component_text(pos: Vector2, text: String, color: Color, anchor_id: String = "") -> void:
 	if not _can_use_scene_root():
 		return
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
-	label.position = pos
+	label.position = _reserve_float_position(anchor_id, pos)
 	label.add_theme_font_size_override("font_size", 18)
-	if _pixel_font_bold:
-		label.add_theme_font_override("font", _pixel_font_bold)
-	elif _pixel_font:
-		label.add_theme_font_override("font", _pixel_font)
+	if _float_font:
+		label.add_theme_font_override("font", _float_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_constant_override("outline_size", 3)
+	label.z_as_relative = false
+	label.z_index = 500
 	if not _safe_add_to_scene(label):
 		return
 	var tween = _scene_root.create_tween()
-	tween.parallel().tween_property(label, "position:y", label.position.y - 24, 0.65)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.65)
+	tween.parallel().tween_property(label, "position:y", label.position.y - 24, 0.84)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.84)
 	tween.tween_callback(label.queue_free)
+
+
+func _reserve_float_position(anchor_id: String, base_position: Vector2) -> Vector2:
+	if anchor_id == "":
+		return base_position
+	var now_ms = Time.get_ticks_msec()
+	var last_ms = int(_float_lane_last_ms.get(anchor_id, 0))
+	if now_ms - last_ms > FLOAT_LANE_RESET_MS:
+		_float_lane_index[anchor_id] = 0
+	var lane = int(_float_lane_index.get(anchor_id, 0))
+	var lane_offset = FLOAT_LANE_OFFSETS[lane % FLOAT_LANE_OFFSETS.size()]
+	_float_lane_index[anchor_id] = lane + 1
+	_float_lane_last_ms[anchor_id] = now_ms
+	return base_position + lane_offset
 
 
 # ============================================================================
@@ -716,4 +780,6 @@ func cleanup_actor_tweens(actor_id: String) -> void:
 		_flash_tweens.erase(actor_id)
 	if _global_idle_tokens.has(actor_id):
 		_global_idle_tokens.erase(actor_id)
+	_float_lane_index.erase(actor_id)
+	_float_lane_last_ms.erase(actor_id)
 	_attack_playing.erase(actor_id)

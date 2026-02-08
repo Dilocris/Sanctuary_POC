@@ -40,9 +40,8 @@ static func atk_up(turns: int = 4, percent: float = 0.25) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.ATK_UP, turns, int(percent * 100), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
-static func bless_buff(turns: int = 2, bonus: int = 2) -> StatusEffect:
-	# Bonus 1d4 (avg 2-3). Let's use value=2 for flat view, or handle in damage calc
-	return StatusEffect.new(StatusEffectIds.BLESS, turns, bonus, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+static func bless_buff(turns: int = 2, percent: float = 0.18) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.BLESS, turns, int(round(percent * 100.0)), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
 static func mage_armor() -> StatusEffect:
@@ -55,9 +54,8 @@ static func genies_wrath(charges: int = 3) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.GENIES_WRATH, charges, charges, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
-static func inspire_attack(turns: int = 1) -> StatusEffect:
-	# Next attack deals +1d8 damage, consume on use.
-	return StatusEffect.new(StatusEffectIds.INSPIRE_ATTACK, turns, 0, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+static func inspire_attack(turns: int = 1, percent: float = 0.35) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.INSPIRE_ATTACK, turns, int(round(percent * 100.0)), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
 
 
 static func patient_defense() -> StatusEffect:
@@ -66,3 +64,7 @@ static func patient_defense() -> StatusEffect:
 
 static func taunt(turns: int = 2) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.TAUNT, turns, 0, [StatusTags.POSITIVE, StatusTags.STAT_BUFF])
+
+
+static func defending(reduction_percent: float = 0.45) -> StatusEffect:
+	return StatusEffect.new(StatusEffectIds.DEFENDING, -1, int(round(reduction_percent * 100.0)), [StatusTags.POSITIVE, StatusTags.STAT_BUFF])

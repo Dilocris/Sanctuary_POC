@@ -42,6 +42,11 @@ var _ornament_br: Texture2D
 
 func _ready() -> void:
 	visible = false
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	if command_panel:
+		command_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	if description_panel:
+		description_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_apply_skin()
 	if action_list_scroll:
 		action_list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -100,7 +105,7 @@ func _build_main_menu() -> void:
 			"kairus": limit_desc = "Inferno Fist: 5 rapid strikes + devastating finisher."
 			"ludwig": limit_desc = "Dragonfire Roar: Rally allies (+ATK) and charm foes."
 			"ninos": limit_desc = "Siren's Call: Heal all allies, cleanse, and grant Regen."
-			"catraca": limit_desc = "Genie's Wrath: Next 3 spells cost 0 MP and deal 1.5x damage."
+			"catraca": limit_desc = "Genie's Wrath: Next 3 damaging spells cost 0 MP and deal 1.5x damage."
 		if limit_id != "":
 			menu_items.append({"label": "Limit Break", "id": limit_id, "desc": limit_desc})
 	# Common Attack (Catraca uses Fire Bolt as her basic)
@@ -118,14 +123,16 @@ func _build_main_menu() -> void:
 		"ninos":
 			menu_items.append({"label": "Abilities", "id": "SKILL_SUB", "desc": "Bardic spells and inspiration."})
 		"catraca":
-			menu_items.append({"label": "Metamagic", "id": "META_SUB", "desc": "Sorcery modifiers. Costs SP."})
 			menu_items.append({"label": "Magic", "id": "SKILL_SUB", "desc": "Sorcerous spells. Costs MP."})
+			menu_items.append({"label": "Metamagic", "id": "META_SUB", "desc": "Sorcery modifiers. Costs SP."})
 
 	# Common Defend/Guard
 	if active_actor.id == "ludwig":
-		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle: +DEF, half dmg, enables Riposte. No Attacks/Maneuvers."})
+		menu_items.append({"label": "Guard Stance", "id": "GUARD_TOGGLE", "desc": "Toggle: +DEF, half dmg, enables Riposte. Blocks offensive maneuvers."})
+		if active_actor.has_status(StatusEffectIds.GUARD_STANCE):
+			menu_items.append({"label": "Hold Guard", "id": "DEFEND", "desc": "Keep Guard Stance active and pass turn without spending resources."})
 	else:
-		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Skip turn, reduce damage taken."})
+		menu_items.append({"label": "Defend", "id": "DEFEND", "desc": "Brace until next turn. Greatly reduces incoming damage."})
 		
 	# Item system (TODO: implement inventory/consumables)
 	# menu_items.append({"label": "Item", "id": "ITEM_SUB", "desc": "Use consumables."})
@@ -142,18 +149,18 @@ func _build_submenu(category: String) -> void:
 				menu_items.append({"label": "Fire Imbue", "id": ActionIds.KAI_FIRE_IMBUE, "desc": "Toggle. Add fire dmg to attacks; drains 1 Ki/turn."})
 		"ludwig":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Lunging Attack", "id": ActionIds.LUD_LUNGING, "desc": "1 Dice. Reach attack with bonus damage."})
-				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Dice. High damage, ignores evasion."})
+				menu_items.append({"label": "Lunging Attack", "id": ActionIds.LUD_LUNGING, "desc": "1 Dice. Heavy strike with high bonus damage, but can miss."})
+				menu_items.append({"label": "Precision Strike", "id": ActionIds.LUD_PRECISION, "desc": "1 Dice. Reliable strike that always connects and deals bonus damage."})
 				menu_items.append({"label": "Shield Bash", "id": ActionIds.LUD_SHIELD_BASH, "desc": "1 Dice. Strike with chance to stun."})
-				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Dice. Heal an ally."})
+				menu_items.append({"label": "Rally", "id": ActionIds.LUD_RALLY, "desc": "1 Dice. Strong morale heal for one ally."})
 				menu_items.append({"label": "Taunt", "id": ActionIds.LUD_TAUNT, "desc": "1 Dice. Force enemy single-target actions to target Ludwig for 2 turns."})
 		"ninos":
 			if category == "SKILL_SUB":
-				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp. Ally's next attack deals +1d8 bonus dmg."})
+				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp. Ally's next damaging action deals bonus % damage."})
 				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP. Damage target and apply ATK Down."})
-				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP. Restore HP to an ally."})
-				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP. All allies gain bonus damage for 2 turns."})
-				menu_items.append({"label": "Cleanse", "id": ActionIds.NINOS_CLEANSE, "desc": "8 MP. Remove cleansable debuffs from an ally and heal 20 HP."})
+				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP. Strong single-target heal that scales with magic."})
+				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP. Party-wide % damage buff for 2 turns."})
+				menu_items.append({"label": "Cleanse", "id": ActionIds.NINOS_CLEANSE, "desc": "8 MP. Remove debuffs from an ally and restore moderate HP."})
 		"catraca":
 			if category == "SKILL_SUB":
 				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP. Fire damage to all enemies."})
@@ -293,7 +300,7 @@ func _handle_selection() -> void:
 	elif id == "ATTACK":
 		emit_signal("action_selected", ActionIds.BASIC_ATTACK)
 	elif id == "DEFEND":
-		emit_signal("action_selected", ActionIds.SKIP_TURN) # Placeholder for Defend
+		emit_signal("action_selected", ActionIds.SKIP_TURN)
 	elif id == "GUARD_TOGGLE":
 		emit_signal("action_selected", ActionIds.LUD_GUARD_STANCE)
 	else:

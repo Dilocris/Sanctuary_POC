@@ -1,147 +1,351 @@
 <!--
 DOC_ID: ROADMAP
-STATUS: ACTIVE - Prioritized backlog
-LAST_UPDATED: 2026-02-04
-SUPERSEDES: Pending items from PROJECT_HANDOFF.md Section 3
+STATUS: ACTIVE - Production backlog and delivery plan
+LAST_UPDATED: 2026-02-08
+SUPERSEDES: Prior ad-hoc roadmap table
 SUPERSEDED_BY: None
 
 LLM USAGE INSTRUCTIONS:
-- This is the BACKLOG for future work. Check here before starting new features.
-- Items are prioritized: HIGH > MEDIUM > LOW.
-- Mark items DONE when completed and add completion date.
-- For current session context, see AGENT_SWAP.md.
-
-QUICK REFERENCE:
-- Gameplay gaps: Section "Gameplay Mechanics"
-- UX improvements: Section "UI/UX Polish"
-- Architecture: Section "Technical Debt"
+- This document is the source of truth for pending combat/gameplay/UI work.
+- Execute tickets in sprint order unless dependencies force reorder.
+- Each ticket must satisfy all acceptance criteria before moving to DONE.
+- Log implementation notes in docs/AGENT_SWAP.md after each ticket completion.
 -->
 
-# Sanctuary POC - Roadmap
+# Sanctuary POC - Production Roadmap
 
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-02-08
 
----
+## Product Direction
+Target feel: readable, high-impact turn flow inspired by the pace and clarity of **Chrono Trigger** and **Sea of Stars**.
 
-## Priority Legend
-- **HIGH** - Blocks core gameplay or causes bugs
-- **MEDIUM** - Important for polish/completeness
-- **LOW** - Nice to have, can defer
+Design pillars:
+1. Fast command loop with strong action payoff.
+2. Clear tactical consequences every turn.
+3. High readability under load (effects, statuses, reactions, logs).
+4. Boss encounters that pressure decisions through mechanics, not only HP inflation.
 
----
+## Locked Decisions
+1. Failed player actions should not consume turn.
+2. Riposte may trigger even if Ludwig was not hit.
+3. KO allies are targetable by healing effects; KO enemies are never targetable.
+4. Genie's Wrath applies to damaging spells only and should be described that way.
 
-## Gameplay Mechanics
-
-### HIGH Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Bardic Inspiration Effect | Currently consumes resource but doesn't apply +1d8 to next attack. Needs `Reaction` or `Modifier` system in damage calculation. | PHASE_3_REFINEMENTS | PENDING |
-| Evasion System | Not implemented. Precision Strike's "Ignore Evasion" and Patient Defense passive have no effect. | PHASE_3_REFINEMENTS | PENDING |
-
-### MEDIUM Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Twin Spell Targeting | Twin metamagic needs proper 2-target selection UI. Currently wired but UX incomplete. | AGENT_SWAP | PENDING |
-| Quicken Spell Guardrails | Second-action after Quicken needs refinement to prevent invalid states. | AGENT_SWAP | PENDING |
-| Fireball AoE Selection | Fireball hits all enemies automatically. Consider UX for selective AoE if needed. | PHASE_3_REFINEMENTS | PENDING |
-
-### LOW Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Healing Word Range | Currently infinite range. Verify if range constraint needed per GDD. | PHASE_3_REFINEMENTS | VERIFY |
-| Boss AI Phase 8 | Boss AI as data resources (.tres) for phase/rotation config. | CODE_REVIEW | DEFERRED |
+## Sprint Sequence
+1. **Sprint A (Stability + Cadence Foundation):** CMB-004, PRE-001, QA-001
+2. **Sprint B (Presentation + UX Clarity):** PRE-002, PRE-003, UX-001, UX-003
+3. **Sprint C (Combat Depth + Encounter Script):** DSG-001..004, ENC-001..003
+4. **Sprint D (Balance + Release Readiness):** BAL-001..003, QA-002
 
 ---
 
-## UI/UX Polish
+## Ticket Backlog
 
-### HIGH Priority
+### Milestone M0 - Core Loop Integrity (P0)
 
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Yellow Health Bar | Delayed "recent damage" bar that drains to current HP. | POLISH_PLAN | DONE (2026-02-04) |
-| HP Number Scroll | Odometer-style digit rolling for HP changes. | POLISH_PLAN | DONE (2026-02-04) — disabled due to Godot clip_children issues |
+#### CMB-001 - Failed Action Turn Handling
+- Priority: P0
+- Status: DONE (2026-02-08)
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+- Acceptance Criteria:
+  1. If `process_next_action()` returns `ok=false` on player turn, battle returns to `ACTION_SELECT` for same actor.
+  2. No end-of-turn status processing runs on failed player action.
+  3. No accidental turn advance occurs for failed player action.
 
-### MEDIUM Priority
+#### CMB-002 - Target Validity Policy (KO Rules)
+- Priority: P0
+- Status: DONE (2026-02-08)
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+  - `scripts/ui/target_cursor.gd`
+- Acceptance Criteria:
+  1. Healing actions can select KO allies.
+  2. Enemy target pools always exclude KO enemies.
+  3. All-target confirms obey same KO filtering rules.
 
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Cursor Tint | Higher contrast cursor for readability. | POLISH_PLAN | DONE (2026-02-04) |
-| Hit Stop | 2-6 frame pause on impactful hits. | POLISH_PLAN | DONE (2026-02-04) |
-| Camera Shake | Light shake on heavy hits/crits. | POLISH_PLAN | DONE (2026-02-04) |
-| Low HP Warning | Vignette or heartbeat at critical HP threshold. | POLISH_PLAN | DONE (2026-02-04) |
+#### CMB-003 - Genie's Wrath Scope Enforcement
+- Priority: P0
+- Status: DONE (2026-02-08)
+- Systems/Files:
+  - `scripts/battle/action_resolver.gd`
+  - `scripts/battle_scene.gd`
+  - `scripts/ui/battle_menu.gd`
+  - `scripts/battle/battle_ui_manager.gd`
+- Acceptance Criteria:
+  1. MP waiver applies only to damaging spells (`CAT_FIRE_BOLT`, `CAT_FIREBALL`).
+  2. Non-damaging spells do not consume Wrath charges.
+  3. UI descriptions explicitly say "damaging spells".
 
-### LOW Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Floater Readability | Re-evaluate damage number stacking during bursts. | POLISH_PLAN | PENDING |
-| FX Intensity Options | Player settings for shake/flash/hit stop intensity. | POLISH_PLAN | PENDING |
-| Audio Feedback | HP tick sounds, impact layers, block/guard SFX. | POLISH_PLAN | PENDING |
-
----
-
-## Technical Debt
-
-### MEDIUM Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Typed Arrays | Use `Array[Character]` syntax for type safety. | CODE_REVIEW | DEFERRED |
-| Scene Composition | Build UI as scenes (party_status_panel.tscn) instead of code. | CODE_REVIEW | DEFERRED |
-| AnimationPlayer | Use for complex animation sequences instead of chained tweens. | CODE_REVIEW | DEFERRED |
-| Code Order Convention | Reorder to GDScript convention (signals, enums, constants, vars). | CODE_REVIEW | DEFERRED |
-
-### LOW Priority
-
-| Item | Description | Source | Status |
-|------|-------------|--------|--------|
-| Unique Node Names | Use `%NodeName` for hierarchy-independent references. | CODE_REVIEW | DEFERRED |
-
----
-
-## Completed Items
-
-| Item | Description | Completed | Notes |
-|------|-------------|-----------|-------|
-| BattleMenu | Menu-driven action selection | 2026-02-03 | Phase 4 |
-| Target Cursor | Visual targeting with tag-based filtering | 2026-02-03 | Phase 4 |
-| Guard Stance | DEF * 1.5, damage * 0.5, Riposte | 2026-02-03 | Phase 3 |
-| Mage Armor | 3-turn DEF buff | 2026-02-03 | Phase 3 |
-| Bless | +1d4 to attacks for 2 turns | 2026-02-03 | Phase 3 |
-| Resource UI | All party resources visible | 2026-02-03 | Phase 4 |
-| Limit Breaks | All 4 heroes wired with cinematic overlay | 2026-02-03 | Phase 4 |
-| Boss AI Phases 1-3 | Full rotation + phase transitions | 2026-02-03 | Phase 4 |
-| God Class Refactor | Phases 1-7 complete (-39% lines) | 2026-02-03 | Review |
-| Data Resources | ActorData + ActionData .tres files | 2026-02-03 | Review |
-| Battle Polish Sprint | 4-phase polish: text/config, UI layout, game logic, animations | 2026-02-05 | Sprint |
-| Fire Imbue + Burn DOT | Skip Ki drain on activation, Burn applied by fire attacks | 2026-02-05 | Phase 3 |
-| Attack Animation System | Kairus attack spritesheet with impact-synced damage | 2026-02-05 | Phase 4 |
-| Fireball Game Feel | Per-target damage numbers + shake for AoE spells | 2026-02-05 | Phase 3 |
-| UI Fixed Columns | Party panel with pixel-perfect column layout + separators | 2026-02-05 | Phase 2 |
-| Frame Bleed Fix | region_rect integer-division frames for spritesheets | 2026-02-05 | Phase 2 |
-| LB Bar Flash | Pulse tween effect when Limit gauge full | 2026-02-05 | Phase 2 |
-| Pixel Font | Silkscreen pixel font on all battle menu labels | 2026-02-05 | Phase 1 |
+#### CMB-004 - Resolve State Machine Hardening
+- Priority: P0
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+  - `scripts/battle_manager.gd`
+- Acceptance Criteria:
+  1. Exactly one terminal branch per action resolution (`success`, `failed-retry`, `failed-advance`, `battle-end`).
+  2. No duplicate `_process_turn_loop()` entry from one action.
+  3. State transitions logged once per boundary.
 
 ---
 
-## Open Questions
+### Milestone M1 - Moment-to-Moment Presentation (P1)
 
-_Decisions needed before implementation._
+#### PRE-001 - Action Timeline Contract
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+  - `scripts/battle/battle_animation_controller.gd`
+  - `scripts/battle/game_feel_controller.gd`
+- Acceptance Criteria:
+  1. Normal single-target actions resolve in 2.5s-4.0s.
+  2. Multi-hit actions resolve in 3.5s-5.0s.
+  3. Timeline stages standardized: intent -> commit -> impact -> settle.
 
-1. **Evasion System Scope** - Full evasion system or just for specific abilities?
-2. **Inspiration Timing** - Should Bardic Inspiration apply to next attack only, or persist until used?
-3. **AoE Selection** - Should Fireball allow selective targeting or always hit all enemies?
-4. **FX Accessibility** - What's the minimum FX set for accessibility mode?
+#### PRE-002 - Limit Break Cinematic Pipeline (~5s)
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+  - `scripts/battle/battle_animation_controller.gd`
+  - `scripts/battle/action_resolver.gd`
+- Acceptance Criteria:
+  1. Limit break runs a 4.5s-6.0s sequence with camera/overlay/impact beats.
+  2. Damage applies on impact beat, not instantly on queue.
+  3. Input locked during cinematic and restored cleanly afterward.
+
+#### PRE-003 - Feedback Priority Router
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_scene.gd`
+  - `scripts/battle/battle_ui_manager.gd`
+- Acceptance Criteria:
+  1. Per action, one primary feedback channel (damage/reaction/limit), secondary channels delayed/staggered.
+  2. Combat log toasts do not overwrite higher-priority events.
+  3. State transition text remains visible during noisy turns.
+
+#### PRE-004 - Reaction Impact Pass
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_manager.gd`
+  - `scripts/battle_scene.gd`
+  - `scripts/battle/reaction_resolver.gd`
+- Acceptance Criteria:
+  1. Every reaction has consistent motion + damage feedback + log callout.
+  2. Riposte uses same readability standards as regular actions.
+  3. No duplicate reaction damage/floaters.
 
 ---
 
-## How to Update This Document
+### Milestone M2 - Readability and UX (P1)
 
-1. Add new items to appropriate section with source reference
-2. Move completed items to "Completed Items" section with date
-3. Update "Last Updated" date at top
-4. For decisions, add to "Open Questions" until resolved
+#### UX-001 - Floater System v2
+- Priority: P1
+- Status: IN_PROGRESS
+- Systems/Files:
+  - `scripts/battle/battle_animation_controller.gd`
+  - `scripts/battle_scene.gd`
+- Acceptance Criteria:
+  1. No overlapping unreadable stacks in 4-hit burst scenario.
+  2. Miss/heal/status/damage all use distinct color/typography rules.
+  3. Floaters always render above scene/UI elements.
+
+#### UX-002 - Lower HUD Numeric Alignment and Scannability
+- Priority: P1
+- Status: IN_PROGRESS
+- Systems/Files:
+  - `scripts/ui/animated_health_bar.gd`
+  - `scripts/battle/battle_ui_manager.gd`
+- Acceptance Criteria:
+  1. HP and MP values centered to bars at 100%/50%/low values.
+  2. LB bar fill and text are both readable in motion.
+  3. MP low state remains visually distinct from HP danger language.
+
+#### UX-003 - Tooltip Coverage and Reliability
+- Priority: P1
+- Status: IN_PROGRESS
+- Systems/Files:
+  - `scripts/battle/battle_ui_manager.gd`
+  - `scripts/ui/battle_menu.gd`
+- Acceptance Criteria:
+  1. Status icons always show name + effect + duration.
+  2. Resource/LB widgets consistently show hover tooltips.
+  3. Hover is not blocked by floating feedback or overlay controls.
+
+#### UX-004 - Menu Navigation and Scroll Robustness
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/ui/battle_menu.gd`
+  - `scenes/ui/battle_menu.tscn`
+- Acceptance Criteria:
+  1. Long skill lists never hide selectable options.
+  2. Disabled reasons are shown for every blocked action.
+  3. Guard stance always has a non-resource spend pass-turn option.
+
+---
+
+### Milestone M3 - Combat Design Depth (P1)
+
+#### DSG-001 - Ludwig Tank Loop Finalization
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle/action_resolver.gd`
+  - `scripts/battle_manager.gd`
+  - `scripts/ui/battle_menu.gd`
+- Acceptance Criteria:
+  1. Guard Stance meaningfully shifts threat and mitigation behavior.
+  2. Taunt + Rally have clear synergy without overshadowing other choices.
+  3. Lunging vs Precision are differentiated by reliability and payoff in real encounters.
+
+#### DSG-002 - Ninos Support Tradeoff Pass
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle/action_resolver.gd`
+  - `scripts/status_effect_factory.gd`
+  - `scripts/ui/battle_menu.gd`
+- Acceptance Criteria:
+  1. Healing Word and Cleanse each have distinct "best-use" windows.
+  2. Bless and Inspire scale percentages feel impactful but not mandatory.
+  3. Ability descriptions exactly match mechanics and numbers.
+
+#### DSG-003 - Catraca Spell/Metamagic Loop
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle/action_resolver.gd`
+  - `scripts/battle_manager.gd`
+  - `scripts/ui/battle_menu.gd`
+- Acceptance Criteria:
+  1. Magic-first command flow remains intuitive.
+  2. Metamagic states are obvious and cannot produce hidden invalid turns.
+  3. Wrath and metamagic interactions are documented and deterministic.
+
+#### DSG-004 - Status Economy Tuning
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/status_effect_factory.gd`
+  - `scripts/battle/status_processor.gd`
+  - `scripts/damage_calculator.gd`
+- Acceptance Criteria:
+  1. Poison/Burn influence turn decisions in Hard mode.
+  2. Cleanse timing matters; not always optimal on cooldown.
+  3. Status durations and values are visible and believable in combat logs/UX.
+
+---
+
+### Milestone M4 - Encounter Scripting (P1/P2)
+
+#### ENC-001 - Boss Intent Script Templates
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/ai_controller.gd`
+  - `scripts/battle_manager.gd`
+  - actor/action data resources
+- Acceptance Criteria:
+  1. Boss turns communicate tactical objective (burst, setup, punish, sustain).
+  2. At least 2 counterplay windows per phase.
+  3. Intent text maps to actual behavior and timings.
+
+#### ENC-002 - Collector's Grasp Consequence Chain
+- Priority: P1
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle/action_resolver.gd`
+  - `scripts/ai_controller.gd`
+- Acceptance Criteria:
+  1. Grasp creates a follow-up threat that changes player priorities next turn.
+  2. Counterplay exists (mitigate, taunt redirect, cleanse, or interrupt line).
+  3. Feedback clearly communicates the consequence state.
+
+#### ENC-003 - Difficulty Behavior Packs
+- Priority: P2
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_manager.gd`
+  - `scripts/ai_controller.gd`
+- Acceptance Criteria:
+  1. Hard mode modifies behavior patterns, not only stat multipliers.
+  2. Story/Normal/Hard each show distinct encounter tempo.
+  3. Reward scaling remains proportional to actual challenge.
+
+---
+
+### Milestone M5 - Balance and Telemetry (P2)
+
+#### BAL-001 - Combat Telemetry Hooks
+- Priority: P2
+- Status: TODO
+- Systems/Files:
+  - `scripts/battle_manager.gd`
+  - `scripts/battle_scene.gd`
+- Acceptance Criteria:
+  1. Capture action pick rate, miss rate, KO source, turn count, and resource starvation events.
+  2. Data export is script-friendly for tuning passes.
+  3. Telemetry toggle available for debug builds.
+
+#### BAL-002 - Tuning Harness
+- Priority: P2
+- Status: TODO
+- Systems/Files:
+  - `scripts/dev/*`
+- Acceptance Criteria:
+  1. Repeatable scenario sims for 20/50/100 turn samples.
+  2. Reports include TTK, incoming DPR, and status uptime by difficulty.
+  3. Supports per-ability parameter sweeps.
+
+#### BAL-003 - KPI Targets and Weekly Tuning Cadence
+- Priority: P2
+- Status: TODO
+- Systems/Files:
+  - `docs/ROADMAP.md`
+  - `docs/AGENT_SWAP.md`
+- Acceptance Criteria:
+  1. KPI targets defined (turn time, meaningful choices, fail-state clarity).
+  2. Weekly tuning checklist documented.
+  3. Each tuning pass logs hypothesis -> change -> observed outcome.
+
+---
+
+### Milestone M6 - Quality Gates (P0)
+
+#### QA-001 - GDScript Parse/Runtime Gate
+- Priority: P0
+- Status: TODO
+- Systems/Files:
+  - `scripts/dev/check_gdscript_sanity.ps1`
+  - optional Godot CLI command docs
+- Acceptance Criteria:
+  1. All `.gd` edits run sanity script before commit.
+  2. If Godot CLI available, headless parse check is mandatory.
+  3. Failures block commit and are logged in handoff notes.
+
+#### QA-002 - Combat Smoke Matrix
+- Priority: P0
+- Status: TODO
+- Systems/Files:
+  - manual QA checklist doc
+- Acceptance Criteria:
+  1. Matrix covers each hero, each core action type, each status family, each difficulty.
+  2. Includes transition cases: battle start, phase change, reaction, battle end.
+  3. Includes UI checks: tooltips, floaters, targeting, menu scroll, LB ready state.
+
+---
+
+## Definition of Done (Global)
+A ticket is only DONE when:
+1. All acceptance criteria are verified in-game.
+2. UI/description text matches actual behavior.
+3. No parser/runtime errors are introduced.
+4. `docs/AGENT_SWAP.md` has a short entry for what changed and why.
+
+## Current Focus
+Next actionable ticket: **CMB-004** (Resolve State Machine Hardening), then **PRE-001**.

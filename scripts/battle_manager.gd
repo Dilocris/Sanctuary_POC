@@ -8,6 +8,7 @@ signal phase_changed(phase: int)
 signal message_added(text: String)
 signal action_enqueued(action: Dictionary)
 signal action_executed(result: Dictionary)
+signal reaction_executed(payload: Dictionary)
 signal battle_ended(result: String)
 @warning_ignore("unused_signal")
 signal status_tick(actor_id: String, amount: int, kind: String)
@@ -45,6 +46,9 @@ const STUNNING_STRIKE_PROC_CHANCE := 0.5
 const SHIELD_BASH_STUN_CHANCE := 0.4
 const DRAGONFIRE_CHARM_CHANCE := 0.7
 const RIPOSTE_PROC_CHANCE := 0.5
+const RIPOSTE_DAMAGE_MULTIPLIER := 1.0
+const BLESS_DAMAGE_BONUS_PERCENT := 0.18
+const INSPIRE_DAMAGE_BONUS_PERCENT := 0.35
 const ACTION_DISPLAY_NAMES := {
 	ActionIds.BOS_GREATAXE_SLAM: "Greataxe Slam",
 	ActionIds.BOS_TENDRIL_LASH: "Tendril Lash",
@@ -348,9 +352,16 @@ func _resolve_reaction(entry: Dictionary) -> void:
 				return
 			if attacker.is_ko() or target.is_ko():
 				return
-			var damage = DamageCalculator.calculate_physical_damage(attacker, target, entry.get("multiplier", 0.6))
+			var damage = DamageCalculator.calculate_physical_damage(attacker, target, entry.get("multiplier", RIPOSTE_DAMAGE_MULTIPLIER))
 			_apply_damage_with_limit(attacker, target, damage)
-			add_message("Riposte! " + attacker.display_name + " counters for " + str(damage) + " damage.")
+			add_message("REACTION: Riposte! " + attacker.display_name + " counters " + target.display_name + " for " + str(damage) + " damage.")
+			emit_signal("reaction_executed", {
+				"reaction_id": "riposte",
+				"actor_id": attacker.id,
+				"target_id": target.id,
+				"damage": damage,
+				"damage_components": [{"type": "normal", "label": "RIPOSTE", "amount": damage}]
+			})
 		_:
 			var log_message = entry.get("log_message", "")
 			if log_message != "":
@@ -388,7 +399,7 @@ func _validate_action(action: Dictionary) -> Dictionary:
 	if actor.has_status(StatusEffectIds.GUARD_STANCE):
 		if action.get("action_id", "") == ActionIds.BASIC_ATTACK:
 			return ActionResult.new(false, "guard_stance_restricts").to_dict()
-		if action.get("action_id", "") in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH, ActionIds.LUD_RALLY, ActionIds.LUD_TAUNT]:
+		if action.get("action_id", "") in [ActionIds.LUD_LUNGING, ActionIds.LUD_PRECISION, ActionIds.LUD_SHIELD_BASH]:
 			return ActionResult.new(false, "guard_stance_restricts").to_dict()
 	return ActionResult.new(true).to_dict()
 
@@ -449,11 +460,44 @@ func _reset_turn_order_after_phase() -> void:
 	battle_state.turn_order = order
 
 func _apply_bless_bonus(attacker: Character, base_damage: int) -> int:
+	return apply_outgoing_damage_modifiers(attacker, base_damage, false, false).get("damage", base_damage)
+
+
+func apply_outgoing_damage_modifiers(attacker: Character, base_damage: int, consume_inspire: bool = false, include_inspire: bool = true) -> Dictionary:
+	var damage = max(1, base_damage)
+	var components: Array = [{"type": "normal", "label": "BASE", "amount": damage}]
 	if attacker == null:
-		return base_damage
-	if attacker.has_status(StatusEffectIds.BLESS):
-		return base_damage + randi_range(1, 4)
-	return base_damage
+		return {"damage": damage, "components": components}
+	var bless_pct = get_status_percent(attacker, StatusEffectIds.BLESS, BLESS_DAMAGE_BONUS_PERCENT)
+	if bless_pct > 0.0:
+		var bless_bonus = int(round(float(base_damage) * bless_pct))
+		if bless_bonus > 0:
+			damage += bless_bonus
+			components.append({"type": "buff", "label": "BLESS", "amount": bless_bonus})
+	if include_inspire and attacker.has_status(StatusEffectIds.INSPIRE_ATTACK):
+		var inspire_pct = get_status_percent(attacker, StatusEffectIds.INSPIRE_ATTACK, INSPIRE_DAMAGE_BONUS_PERCENT)
+		if inspire_pct > 0.0:
+			var inspire_bonus = int(round(float(base_damage) * inspire_pct))
+			if inspire_bonus > 0:
+				damage += inspire_bonus
+				components.append({"type": "buff", "label": "INSPIRE", "amount": inspire_bonus})
+		if consume_inspire:
+			attacker.remove_status(StatusEffectIds.INSPIRE_ATTACK)
+			add_message(attacker.display_name + "'s Inspiration is spent.")
+	return {"damage": max(1, damage), "components": components}
+
+
+func get_status_percent(actor: Character, status_id: String, fallback_percent: float = 0.0) -> float:
+	if actor == null:
+		return fallback_percent
+	for status in actor.status_effects:
+		if _get_status_id(status) != status_id:
+			continue
+		var value = _get_status_value(status)
+		if value > 0:
+			return float(value) / 100.0
+		break
+	return fallback_percent
 
 func _apply_genies_wrath_bonus(attacker: Character, base_damage: int) -> int:
 	if attacker == null:

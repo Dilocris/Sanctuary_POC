@@ -211,11 +211,6 @@ func _apply_damage(ctx: Dictionary, spec: Dictionary) -> void:
 
 func _resolve_bonus_damage(ctx: Dictionary, spec: Dictionary) -> int:
 	var bonus := 0
-	if spec.get("allow_inspire_bonus", false) and ctx.actor.has_status(StatusEffectIds.INSPIRE_ATTACK):
-		bonus += randi_range(1, 8)
-		ctx.actor.remove_status(StatusEffectIds.INSPIRE_ATTACK)
-		ctx.log_entries.append(ctx.actor.display_name + " strikes with Inspiration! +" + str(bonus) + " dmg.")
-
 	if spec.has("bonus_range"):
 		bonus += randi_range(spec.bonus_range[0], spec.bonus_range[1])
 	return bonus
@@ -290,9 +285,9 @@ func _handle_reaction_window(ctx: Dictionary, spec: Dictionary) -> void:
 		return
 	if randf() > _battle_manager.RIPOSTE_PROC_CHANCE:
 		return
-	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, 0.6)
+	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, _battle_manager.RIPOSTE_DAMAGE_MULTIPLIER)
 	_apply_damage_with_limit(defender, attacker, riposte_dmg)
-	ctx.log_entries.append("Riposte! " + defender.display_name + " counters for " + str(riposte_dmg) + " damage.")
+	ctx.log_entries.append("REACTION: Riposte! " + defender.display_name + " counters for " + str(riposte_dmg) + " damage.")
 	_add_event(ctx, EVENT_REACTION, {
 		"actor_id": defender.id,
 		"target_id": attacker.id,

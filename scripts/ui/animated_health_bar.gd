@@ -140,22 +140,22 @@ func _create_static_text() -> void:
 
 
 func _create_odometer_display() -> void:
-	# Container for the odometer display, centered on the bar
-	_hp_container = HBoxContainer.new()
-	_hp_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	# Use explicit size instead of anchors
-	_hp_container.position = Vector2.ZERO
-	_hp_container.size = bar_size
-	_hp_container.z_index = 1
-	_hp_container.clip_children = Control.CLIP_CHILDREN_AND_DRAW
-	_hp_container.add_theme_constant_override("separation", 0)
-	add_child(_hp_container)
-
 	# Scale odometer sizes to fit bar height
 	var d_height = mini(int(bar_size.y), 16)
 	var d_font = maxi(8, d_height - 3)
 	var d_width = maxi(6, int(d_height * 0.55))
 	var text_font = maxi(7, d_height - 4)
+
+	# Container for the odometer display, centered on the bar
+	_hp_container = HBoxContainer.new()
+	_hp_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	var text_y = int((bar_size.y - d_height) / 2.0) + static_text_vertical_offset
+	_hp_container.position = Vector2(0, text_y)
+	_hp_container.size = Vector2(bar_size.x, d_height)
+	_hp_container.z_index = 1
+	_hp_container.clip_children = Control.CLIP_CHILDREN_AND_DRAW
+	_hp_container.add_theme_constant_override("separation", 0)
+	add_child(_hp_container)
 
 	# Current HP (odometer)
 	_hp_odometer = OdometerLabelClass.new()

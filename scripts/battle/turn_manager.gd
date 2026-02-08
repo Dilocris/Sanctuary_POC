@@ -44,7 +44,7 @@ func start_round() -> void:
 	var order = calculate_turn_order()
 	if order.is_empty():
 		return
-	_battle_manager._set_active_character(order[0])
+	_prepare_active_character(order[0])
 
 
 func advance_turn() -> void:
@@ -60,4 +60,12 @@ func advance_turn() -> void:
 		_battle_manager.battle_state.turn_count += 1
 		start_round()
 		return
-	_battle_manager._set_active_character(_battle_manager.battle_state.turn_order[next_index])
+	_prepare_active_character(_battle_manager.battle_state.turn_order[next_index])
+
+
+func _prepare_active_character(actor_id: String) -> void:
+	var actor = _battle_manager.get_actor_by_id(actor_id)
+	if actor != null and actor.has_status(StatusEffectIds.DEFENDING):
+		actor.remove_status(StatusEffectIds.DEFENDING)
+		_battle_manager.add_message(actor.display_name + "'s Defend stance fades.")
+	_battle_manager._set_active_character(actor_id)

@@ -6,6 +6,19 @@ class_name ActionResolver
 var _battle_manager: BattleManager
 var _pipeline: ActionPipeline
 
+const LUD_LUNGING_MISS_CHANCE := 0.24
+const LUD_LUNGING_MULTIPLIER := 1.45
+const LUD_LUNGING_BONUS_MIN := 4
+const LUD_LUNGING_BONUS_MAX := 12
+const LUD_PRECISION_MULTIPLIER := 1.15
+const LUD_PRECISION_BONUS_MIN := 2
+const LUD_PRECISION_BONUS_MAX := 6
+const HEALING_WORD_BASE_MIN := 14
+const HEALING_WORD_BASE_MAX := 22
+const HEALING_WORD_MAG_SCALE := 0.25
+const CLEANSE_BASE_HEAL := 10
+const CLEANSE_MAG_SCALE := 0.15
+
 
 func setup(battle_manager: BattleManager) -> void:
 	_battle_manager = battle_manager
@@ -55,12 +68,14 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 	var summary = pipeline_result.get("payload", {}).get("summary", {})
 	var damage = int(summary.get("damage_total", 0))
 	var bonus_dmg = int(summary.get("bonus_damage", 0))
+	var damage_components: Array = summary.get("damage_components", [])
+	_consume_inspire_on_success(attacker, true, damage_components)
 	_apply_fire_imbue_burn(attacker, target)
 	return ActionResult.new(true, "", {
 		"hit": true,
 		"damage": damage,
 		"bonus": bonus_dmg,
-		"damage_components": summary.get("damage_components", []),
+		"damage_components": damage_components,
 		"damage_components_by_hit": summary.get("damage_components_by_hit", []),
 		"damage_sources": summary.get("damage_sources", []),
 		"attacker_id": attacker_id,
@@ -73,7 +88,8 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 	var actor_id = action.get("actor_id", "")
 	var targets = action.get("targets", [])
 	var actor = _battle_manager.get_actor_by_id(actor_id)
-	if actor != null and actor.has_status(StatusEffectIds.GENIES_WRATH) and action.get("mp_cost", 0) > 0:
+	var wrath_applies = actor != null and actor.has_status(StatusEffectIds.GENIES_WRATH) and _is_genies_wrath_damage_spell(action_id)
+	if wrath_applies and action.get("mp_cost", 0) > 0:
 		action["mp_cost"] = 0
 		action["genies_wrath"] = true
 	if actor != null and not actor.can_use_action(action):
@@ -86,6 +102,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			return execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.0), action.get("tags", []))
 		ActionIds.SKIP_TURN:
+			if actor != null and _battle_manager.is_party_member(actor_id) and actor_id != "ludwig":
+				actor.add_status(StatusEffectFactory.defending())
+				_battle_manager.add_message(actor.display_name + " takes a defensive stance.")
+				return ActionResult.new(true, "", {
+					"skipped": true,
+					"buff": "defending",
+					"attacker_id": actor_id,
+					"target_id": actor_id
+				}).to_dict()
 			_battle_manager.add_message("Action skipped.")
 			return ActionResult.new(true, "", {"skipped": true}).to_dict()
 		ActionIds.KAI_FLURRY:
@@ -157,18 +182,30 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var base_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
+			if randf() <= LUD_LUNGING_MISS_CHANCE:
+				_battle_manager.add_message(actor.display_name + "'s lunging attack overextends and misses!")
+				return ActionResult.new(true, "", {
+					"hit": false,
+					"damage": 0,
+					"attacker_id": actor_id,
+					"target_id": targets[0]
+				}).to_dict()
+			var base_result = execute_basic_attack(actor_id, targets[0], action.get("multiplier", LUD_LUNGING_MULTIPLIER), action.get("tags", []))
 			var bonus_dmg = 0
 			var total_dmg = base_result.get("payload", {}).get("damage", 0)
+			var lunging_components: Array = base_result.get("payload", {}).get("damage_components", []).duplicate(true)
 			var target_lung = _battle_manager.get_actor_by_id(targets[0])
 			if target_lung != null and base_result.get("payload", {}).get("hit", false):
-				bonus_dmg = randi_range(1, 8)
+				bonus_dmg = randi_range(LUD_LUNGING_BONUS_MIN, LUD_LUNGING_BONUS_MAX)
 				_apply_damage_with_limit(actor, target_lung, bonus_dmg)
-				_battle_manager.add_message(actor.display_name + " lunges! Bonus " + str(bonus_dmg) + " damage!")
+				lunging_components.append({"type": "buff", "label": "LUNGE", "amount": bonus_dmg})
+				_battle_manager.add_message(actor.display_name + " lands a heavy lunge! +" + str(bonus_dmg) + " bonus damage.")
 				total_dmg += bonus_dmg
 			return ActionResult.new(true, "", {
+				"hit": base_result.get("payload", {}).get("hit", false),
 				"damage": total_dmg,
 				"bonus": bonus_dmg,
+				"damage_components": lunging_components,
 				"attacker_id": actor_id,
 				"target_id": targets[0]
 			}).to_dict()
@@ -178,18 +215,22 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action)
 			# Precision ignores evasion through ActionTags.IGNORES_EVASION.
-			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", 1.2), action.get("tags", []))
+			var base_prec = execute_basic_attack(actor_id, targets[0], action.get("multiplier", LUD_PRECISION_MULTIPLIER), action.get("tags", []))
 			var bonus_prec = 0
 			var total_prec = base_prec.get("payload", {}).get("damage", 0)
+			var precision_components: Array = base_prec.get("payload", {}).get("damage_components", []).duplicate(true)
 			var target_prec = _battle_manager.get_actor_by_id(targets[0])
 			if target_prec != null and base_prec.get("payload", {}).get("hit", false):
-				bonus_prec = randi_range(1, 8)
+				bonus_prec = randi_range(LUD_PRECISION_BONUS_MIN, LUD_PRECISION_BONUS_MAX)
 				_apply_damage_with_limit(actor, target_prec, bonus_prec)
-				_battle_manager.add_message(actor.display_name + " strikes precisely! Bonus " + str(bonus_prec) + " damage!")
+				precision_components.append({"type": "buff", "label": "PRECISION", "amount": bonus_prec})
+				_battle_manager.add_message(actor.display_name + " strikes with perfect precision! +" + str(bonus_prec) + " bonus damage.")
 				total_prec += bonus_prec
 			return ActionResult.new(true, "", {
+				"hit": base_prec.get("payload", {}).get("hit", false),
 				"damage": total_prec,
 				"bonus": bonus_prec,
+				"damage_components": precision_components,
 				"attacker_id": actor_id,
 				"target_id": targets[0]
 			}).to_dict()
@@ -219,7 +260,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action)
 			var target_rally = _battle_manager.get_actor_by_id(targets[0])
-			var heal_amt = randi_range(1, 8) + 5
+			var heal_amt = randi_range(8, 14) + (int(actor.stats.get("def", 0) * 0.1) if actor else 0)
 			if target_rally != null:
 				target_rally.heal(heal_amt)
 				_battle_manager.add_message(actor.display_name + " rallies " + target_rally.display_name + " for " + str(heal_amt) + " HP!")
@@ -245,7 +286,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if actor != null:
 				actor.consume_resources(action)
 			var target_hw = _battle_manager.get_actor_by_id(targets[0])
-			var heal_val = randi_range(2, 8) + 5
+			var heal_val = randi_range(HEALING_WORD_BASE_MIN, HEALING_WORD_BASE_MAX) + (int(actor.stats.mag * HEALING_WORD_MAG_SCALE) if actor else 0)
 			if target_hw != null:
 				target_hw.heal(heal_val)
 				_battle_manager.add_message(actor.display_name + " heals " + target_hw.display_name + " for " + str(heal_val) + " HP!")
@@ -261,13 +302,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			var target_vm = _battle_manager.get_actor_by_id(targets[0])
 			var damage_vm = 15 + (int(actor.stats.mag * 0.3) if actor else 0)
-			damage_vm = _battle_manager._apply_bless_bonus(actor, damage_vm)
+			var vm_mod = _battle_manager.apply_outgoing_damage_modifiers(actor, damage_vm, true, true)
+			damage_vm = vm_mod.get("damage", damage_vm)
 			if target_vm != null:
 				_apply_damage_with_limit(actor, target_vm, damage_vm)
 				target_vm.add_status(StatusEffectFactory.atk_down())
 				_battle_manager.add_message(actor.display_name + " mocks " + target_vm.display_name + "! " + str(damage_vm) + " dmg + ATK Down!")
 			return ActionResult.new(true, "", {
 				"damage": damage_vm,
+				"damage_components": vm_mod.get("components", [{"type": "normal", "label": "BASE", "amount": damage_vm}]),
 				"debuff": "atk_down",
 				"attacker_id": actor_id,
 				"target_id": targets[0]
@@ -280,8 +323,8 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			for t_id in targets:
 				var t_bless = _battle_manager.get_actor_by_id(t_id)
 				if t_bless != null:
-					t_bless.add_status(StatusEffectFactory.bless_buff())
-			_battle_manager.add_message(actor.display_name + " blesses the party!")
+					t_bless.add_status(StatusEffectFactory.bless_buff(2, _battle_manager.BLESS_DAMAGE_BONUS_PERCENT))
+			_battle_manager.add_message(actor.display_name + " blesses the party (+" + str(int(_battle_manager.BLESS_DAMAGE_BONUS_PERCENT * 100.0)) + "% damage)!")
 			return ActionResult.new(true, "", {
 				"buff": "bless",
 				"targets": targets,
@@ -296,7 +339,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			if target_cleanse == null:
 				return ActionResult.new(false, "missing_target").to_dict()
 			_battle_manager._remove_negative_statuses(target_cleanse)
-			var cleanse_heal = 20
+			var cleanse_heal = CLEANSE_BASE_HEAL + (int(actor.stats.mag * CLEANSE_MAG_SCALE) if actor else 0)
 			target_cleanse.heal(cleanse_heal)
 			_battle_manager.add_message(actor.display_name + " cleanses " + target_cleanse.display_name + "!")
 			return ActionResult.new(true, "", {
@@ -312,8 +355,8 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				actor.consume_resources(action)
 			var target_inspire = _battle_manager.get_actor_by_id(targets[0])
 			if target_inspire != null:
-				target_inspire.add_status(StatusEffectFactory.inspire_attack())
-				_battle_manager.add_message(actor.display_name + " inspires " + target_inspire.display_name + " (Attack)!")
+				target_inspire.add_status(StatusEffectFactory.inspire_attack(1, _battle_manager.INSPIRE_DAMAGE_BONUS_PERCENT))
+				_battle_manager.add_message(actor.display_name + " inspires " + target_inspire.display_name + " (+" + str(int(_battle_manager.INSPIRE_DAMAGE_BONUS_PERCENT * 100.0)) + "% next hit)!")
 			return ActionResult.new(true, "", {
 				"inspired": "attack",
 				"target_id": targets[0],
@@ -329,7 +372,8 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var meta = _battle_manager.consume_metamagic(actor_id)
 			var dmg_fb = randi_range(1, 10) + (int(actor.stats.mag * 0.5) if actor else 0)
 			dmg_fb = _battle_manager._apply_genies_wrath_bonus(actor, dmg_fb)
-			dmg_fb = _battle_manager._apply_bless_bonus(actor, dmg_fb)
+			var firebolt_mod = _battle_manager.apply_outgoing_damage_modifiers(actor, dmg_fb, true, true)
+			dmg_fb = firebolt_mod.get("damage", dmg_fb)
 			if target_fb != null:
 				_apply_damage_with_limit(actor, target_fb, dmg_fb)
 				_battle_manager.add_message(actor.display_name + " casts Fire Bolt at " + target_fb.display_name + "! " + str(dmg_fb) + " Fire dmg")
@@ -340,7 +384,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 						_battle_manager.add_message("Twin Spell hits " + extra.display_name + " for " + str(dmg_fb) + "!")
 			return ActionResult.new(true, "", {
 				"damage": dmg_fb,
-				"damage_components": [{"type": "normal", "label": "BASE", "amount": dmg_fb}],
+				"damage_components": firebolt_mod.get("components", [{"type": "normal", "label": "BASE", "amount": dmg_fb}]),
 				"element": "fire",
 				"attacker_id": actor_id,
 				"target_id": targets[0],
@@ -356,6 +400,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			var total_dmg_fireball = 0
 			var hit_targets = []
 			var multi_target_damage: Array = []
+			var consume_inspire = true
 			for t_id in targets:
 				var t_fireball = _battle_manager.get_actor_by_id(t_id)
 				if t_fireball != null:
@@ -363,13 +408,15 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					# For poc, simple formula:
 					dmg_val = randi_range(20, 50) + (actor.stats.mag if actor else 0)
 					dmg_val = _battle_manager._apply_genies_wrath_bonus(actor, dmg_val)
-					dmg_val = _battle_manager._apply_bless_bonus(actor, dmg_val)
+					var fireball_mod = _battle_manager.apply_outgoing_damage_modifiers(actor, dmg_val, consume_inspire, true)
+					dmg_val = fireball_mod.get("damage", dmg_val)
+					consume_inspire = false
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
 					multi_target_damage.append({
 						"target_id": t_id,
 						"damage": dmg_val,
-						"components": [{"type": "normal", "label": "BASE", "amount": dmg_val}]
+						"components": fireball_mod.get("components", [{"type": "normal", "label": "BASE", "amount": dmg_val}])
 					})
 					total_dmg_fireball += dmg_val
 			_battle_manager.add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
@@ -387,7 +434,6 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					_battle_manager.add_message(actor.display_name + " already has Mage Armor.")
 					return ActionResult.new(false, "already_active").to_dict()
 				actor.consume_resources(action)
-				_battle_manager._consume_genies_wrath_charge(actor)
 				actor.add_status(StatusEffectFactory.mage_armor())
 				_battle_manager.add_message(actor.display_name + " casts Mage Armor!")
 				return ActionResult.new(true, "", {
@@ -584,6 +630,10 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			return ActionResult.new(false, "unknown_action").to_dict()
 
 
+func _is_genies_wrath_damage_spell(action_id: String) -> bool:
+	return action_id in [ActionIds.CAT_FIRE_BOLT, ActionIds.CAT_FIREBALL]
+
+
 func _ignores_evasion(action_tags: Array) -> bool:
 	return action_tags.has(ActionTags.IGNORES_EVASION)
 
@@ -618,6 +668,18 @@ func _apply_fire_imbue_burn(attacker: Character, target: Character) -> void:
 	_battle_manager.add_message(target.display_name + " is burning!")
 
 
+func _consume_inspire_on_success(attacker: Character, hit: bool, components: Array) -> void:
+	if attacker == null or not hit:
+		return
+	if not attacker.has_status(StatusEffectIds.INSPIRE_ATTACK):
+		return
+	for comp in components:
+		if str(comp.get("label", "")) == "INSPIRE":
+			attacker.remove_status(StatusEffectIds.INSPIRE_ATTACK)
+			_battle_manager.add_message(attacker.display_name + "'s Inspiration is spent.")
+			return
+
+
 func _try_riposte(attacker: Character, defender: Character) -> void:
 	if attacker == null or defender == null:
 		return
@@ -627,6 +689,6 @@ func _try_riposte(attacker: Character, defender: Character) -> void:
 		return
 	if randf() > _battle_manager.RIPOSTE_PROC_CHANCE:
 		return
-	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, 0.6)
+	var riposte_dmg = DamageCalculator.calculate_physical_damage(defender, attacker, _battle_manager.RIPOSTE_DAMAGE_MULTIPLIER)
 	_apply_damage_with_limit(defender, attacker, riposte_dmg)
-	_battle_manager.add_message("Riposte! " + defender.display_name + " counters for " + str(riposte_dmg) + " damage.")
+	_battle_manager.add_message("REACTION: Riposte! " + defender.display_name + " counters for " + str(riposte_dmg) + " damage.")
