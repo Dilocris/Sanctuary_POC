@@ -149,6 +149,9 @@ const COL_SEP3_X := 324
 const COL_LB_X := 330
 const COL_LB_VALUE_X := 348
 const LB_VALUE_BOX_W := 52
+const COL_STATUS_X := 406
+const STATUS_ICON_SIZE := 14
+const STATUS_ICON_GAP := 3
 const SEP_COLOR := Color(0.35, 0.35, 0.4, 0.4)
 const ROW_HEIGHT := 34
 const TOP_HUD_X := 24
@@ -189,6 +192,7 @@ var _party_lb_texts: Dictionary = {}      # actor_id -> Label
 var _party_lb_fills: Dictionary = {}      # actor_id -> StyleBoxFlat
 var _party_lb_tweens: Dictionary = {}    # actor_id -> Tween (pulse when full)
 var _party_row_highlights: Dictionary = {} # actor_id -> ColorRect (active row bg)
+var _party_status_icon_rows: Dictionary = {} # actor_id -> HBoxContainer
 var _party_ui_initialized: bool = false
 
 # State
@@ -450,14 +454,14 @@ func update_status_effects_text() -> void:
 		if member.status_effects.size() > 0:
 			var effect_names = []
 			for effect in member.status_effects:
-				effect_names.append(_format_status_effect_name(str(effect.id)))
+				effect_names.append(_format_status_effect_name(_status_id_from_variant(effect)))
 			active_statuses.append(member.display_name + ": [" + ", ".join(effect_names) + "]")
 
 	for enemy in _battle_manager.battle_state.enemies:
 		if enemy.status_effects.size() > 0:
 			var effect_names = []
 			for effect in enemy.status_effects:
-				effect_names.append(_format_status_effect_name(str(effect.id)))
+				effect_names.append(_format_status_effect_name(_status_id_from_variant(effect)))
 			active_statuses.append(enemy.display_name + ": [" + ", ".join(effect_names) + "]")
 
 	if status_effects_display:
@@ -503,6 +507,7 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 			var grid = _party_resource_grids[actor_id]
 			var res_val = _get_actor_resource_current(actor)
 			grid.set_value(res_val)
+		_refresh_status_icons(actor)
 
 		# Update LB value box text.
 		if _party_lb_texts.has(actor_id):
@@ -555,6 +560,7 @@ func _create_party_ui() -> void:
 	_party_lb_fills.clear()
 	_party_lb_tweens.clear()
 	_party_row_highlights.clear()
+	_party_status_icon_rows.clear()
 
 	var active_id = _battle_manager.battle_state.get("active_character_id", "")
 
@@ -716,6 +722,16 @@ func _create_party_ui() -> void:
 		lb_box.add_child(lb_text)
 		_party_lb_texts[actor_id] = lb_text
 
+		var status_row = HBoxContainer.new()
+		status_row.position = Vector2(COL_STATUS_X, row_y + int((ROW_HEIGHT - STATUS_ICON_SIZE) / 2))
+		status_row.size = Vector2(130, STATUS_ICON_SIZE)
+		status_row.clip_contents = true
+		status_row.add_theme_constant_override("separation", STATUS_ICON_GAP)
+		status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_party_status_icon_rows[actor_id] = status_row
+		party_status_panel.add_child(status_row)
+		_refresh_status_icons(actor)
+
 		row_idx += 1
 
 	# Initialize all bars with current values (no animation on first display)
@@ -730,6 +746,136 @@ func _create_party_ui() -> void:
 			var res_max = _get_actor_resource_max(actor)
 			var res_cur = _get_actor_resource_current(actor)
 			_party_resource_grids[actor_id].initialize(res_cur, res_max)
+
+
+func _refresh_status_icons(actor: Character) -> void:
+	if actor == null:
+		return
+	if not _party_status_icon_rows.has(actor.id):
+		return
+	var row = _party_status_icon_rows[actor.id] as HBoxContainer
+	if row == null:
+		return
+	for child in row.get_children():
+		child.queue_free()
+	for status in actor.status_effects:
+		var status_id = ""
+		if status is StatusEffect:
+			status_id = str(status.id)
+		elif status is Dictionary:
+			status_id = str(status.get("id", ""))
+		if status_id.is_empty():
+			continue
+		var icon = _build_status_icon(status_id)
+		row.add_child(icon)
+
+
+func _build_status_icon(status_id: String) -> Control:
+	var panel = Panel.new()
+	panel.custom_minimum_size = Vector2(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
+	panel.size = Vector2(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
+	panel.add_theme_stylebox_override("panel", _status_icon_style(status_id))
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var txt = Label.new()
+	txt.text = _status_icon_text(status_id)
+	txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	txt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	txt.add_theme_font_size_override("font_size", 8)
+	txt.add_theme_color_override("font_color", Color(0.98, 0.98, 0.98))
+	txt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	txt.add_theme_constant_override("outline_size", 1)
+	txt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_apply_pixel_font(txt, true)
+	panel.add_child(txt)
+	return panel
+
+
+func _status_icon_style(status_id: String) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = _status_icon_color(status_id)
+	style.border_color = Color(0.08, 0.08, 0.1, 0.95)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 2
+	style.corner_radius_top_right = 2
+	style.corner_radius_bottom_left = 2
+	style.corner_radius_bottom_right = 2
+	return style
+
+
+func _status_icon_color(status_id: String) -> Color:
+	match status_id:
+		StatusEffectIds.POISON:
+			return Color(0.48, 0.2, 0.72)
+		StatusEffectIds.BURN:
+			return Color(0.9, 0.36, 0.12)
+		StatusEffectIds.BLESS:
+			return Color(0.84, 0.72, 0.24)
+		StatusEffectIds.REGEN:
+			return Color(0.2, 0.72, 0.34)
+		StatusEffectIds.ATK_UP:
+			return Color(0.96, 0.64, 0.22)
+		StatusEffectIds.ATK_DOWN:
+			return Color(0.36, 0.44, 0.9)
+		StatusEffectIds.STUN:
+			return Color(0.95, 0.8, 0.2)
+		StatusEffectIds.CHARM:
+			return Color(0.9, 0.3, 0.66)
+		StatusEffectIds.GUARD_STANCE:
+			return Color(0.3, 0.62, 0.92)
+		StatusEffectIds.MAGE_ARMOR:
+			return Color(0.26, 0.54, 0.92)
+		StatusEffectIds.FIRE_IMBUE:
+			return Color(0.88, 0.34, 0.12)
+		StatusEffectIds.INSPIRE_ATTACK:
+			return Color(0.84, 0.42, 0.86)
+		StatusEffectIds.GENIES_WRATH:
+			return Color(0.96, 0.28, 0.74)
+		StatusEffectIds.PATIENT_DEFENSE:
+			return Color(0.34, 0.68, 0.86)
+		StatusEffectIds.TAUNT:
+			return Color(0.86, 0.24, 0.2)
+		_:
+			return Color(0.34, 0.34, 0.42)
+
+
+func _status_icon_text(status_id: String) -> String:
+	match status_id:
+		StatusEffectIds.POISON:
+			return "PO"
+		StatusEffectIds.BURN:
+			return "BU"
+		StatusEffectIds.BLESS:
+			return "BL"
+		StatusEffectIds.REGEN:
+			return "RG"
+		StatusEffectIds.ATK_UP:
+			return "AU"
+		StatusEffectIds.ATK_DOWN:
+			return "AD"
+		StatusEffectIds.STUN:
+			return "ST"
+		StatusEffectIds.CHARM:
+			return "CH"
+		StatusEffectIds.GUARD_STANCE:
+			return "GS"
+		StatusEffectIds.MAGE_ARMOR:
+			return "MA"
+		StatusEffectIds.FIRE_IMBUE:
+			return "FI"
+		StatusEffectIds.INSPIRE_ATTACK:
+			return "IN"
+		StatusEffectIds.GENIES_WRATH:
+			return "GW"
+		StatusEffectIds.PATIENT_DEFENSE:
+			return "PD"
+		StatusEffectIds.TAUNT:
+			return "TA"
+		_:
+			return "??"
 
 
 func update_boss_status() -> void:
@@ -921,6 +1067,14 @@ func _format_actor_display_name(actor_id: String) -> String:
 
 func _format_status_effect_name(effect_id: String) -> String:
 	return _format_identifier(effect_id)
+
+
+func _status_id_from_variant(effect: Variant) -> String:
+	if effect is StatusEffect:
+		return str(effect.id)
+	if effect is Dictionary:
+		return str(effect.get("id", ""))
+	return ""
 
 
 func _format_identifier(raw_value: String) -> String:

@@ -65,6 +65,7 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.NINOS_VICIOUS_MOCKERY: "Vicious Mockery",
 	ActionIds.NINOS_HEALING_WORD: "Healing Word",
 	ActionIds.NINOS_BLESS: "Bless",
+	ActionIds.NINOS_CLEANSE: "Cleanse",
 	ActionIds.NINOS_INSPIRE_ATTACK: "Inspire (Atk)",
 	ActionIds.CAT_FIRE_BOLT: "Fire Bolt",
 	ActionIds.CAT_FIREBALL: "Fireball",
@@ -75,9 +76,9 @@ const ACTION_DISPLAY_NAMES := {
 	ActionIds.CAT_LIMIT: "Genie's Wrath"
 }
 const DIFFICULTY_SETTINGS := {
-	"Story": {"party_hp": 1.15, "enemy_hp": 0.85, "reward": 0.85},
-	"Normal": {"party_hp": 1.0, "enemy_hp": 1.0, "reward": 1.0},
-	"Hard": {"party_hp": 0.9, "enemy_hp": 1.2, "reward": 1.2}
+	"Story": {"party_hp": 1.15, "enemy_hp": 0.85, "party_atk": 1.08, "enemy_atk": 0.9, "dot_party": 0.9, "dot_enemy": 1.0, "reward": 0.85},
+	"Normal": {"party_hp": 1.0, "enemy_hp": 1.0, "party_atk": 1.0, "enemy_atk": 1.0, "dot_party": 1.0, "dot_enemy": 1.0, "reward": 1.0},
+	"Hard": {"party_hp": 0.82, "enemy_hp": 1.35, "party_atk": 0.95, "enemy_atk": 1.22, "dot_party": 1.45, "dot_enemy": 1.2, "reward": 1.25}
 }
 
 enum BattleState {
@@ -185,6 +186,8 @@ func _apply_difficulty_scaling(difficulty: String) -> void:
 	var settings = _get_difficulty_settings(difficulty)
 	_apply_hp_scaling(battle_state.party, settings.get("party_hp", 1.0))
 	_apply_hp_scaling(battle_state.enemies, settings.get("enemy_hp", 1.0))
+	_apply_stat_scaling(battle_state.party, "atk", settings.get("party_atk", 1.0))
+	_apply_stat_scaling(battle_state.enemies, "atk", settings.get("enemy_atk", 1.0))
 
 
 func _apply_hp_scaling(actors: Array, multiplier: float) -> void:
@@ -193,6 +196,12 @@ func _apply_hp_scaling(actors: Array, multiplier: float) -> void:
 		var scaled_max = max(1, int(round(base_max * multiplier)))
 		actor.stats["hp_max"] = scaled_max
 		actor.hp_current = scaled_max
+
+
+func _apply_stat_scaling(actors: Array, stat_key: String, multiplier: float) -> void:
+	for actor in actors:
+		var base_value = int(actor.stats.get(stat_key, 0))
+		actor.stats[stat_key] = max(1, int(round(float(base_value) * multiplier)))
 
 
 func _get_difficulty_reward_multiplier() -> float:
@@ -394,11 +403,11 @@ func process_end_of_turn_effects(actor: Character) -> void:
 
 
 func _apply_attack_hits(attacker_id: String, target_id: String, hits: int, multiplier: float, action_tags: Array = []) -> Array:
-	var damages: Array = []
+	var hit_payloads: Array = []
 	for _i in range(hits):
 		var result = execute_basic_attack(attacker_id, target_id, multiplier, action_tags)
-		damages.append(result.get("payload", {}).get("damage", 0))
-	return damages
+		hit_payloads.append(result.get("payload", {}))
+	return hit_payloads
 
 
 func _get_additional_enemy_target(exclude_id: String) -> Character:
@@ -521,6 +530,13 @@ func _add_limit_on_damage_taken(target: Character, amount: int, divisor: float) 
 	if amount <= 0:
 		return
 	target.add_limit_gauge(int(floor(amount / divisor)))
+
+
+func is_party_member(actor_id: String) -> bool:
+	for member in battle_state.party:
+		if member.id == actor_id:
+			return true
+	return false
 
 
 func _set_metamagic(actor_id: String, meta: String) -> void:

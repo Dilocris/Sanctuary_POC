@@ -13,33 +13,57 @@ const BASE_CRIT_CHANCE := 0.05
 const CRIT_MULTIPLIER := 2.0
 
 static func calculate_physical_damage(attacker: Node, defender: Node, multiplier: float) -> int:
+	var breakdown = calculate_physical_damage_breakdown(attacker, defender, multiplier)
+	return int(breakdown.get("total", 0))
+
+
+static func calculate_physical_damage_breakdown(attacker: Node, defender: Node, multiplier: float) -> Dictionary:
 	if attacker == null or defender == null:
-		return 0
-	var atk = attacker.stats.get("atk", 0)
+		return {"total": 0, "components": []}
+	var atk = float(attacker.stats.get("atk", 0))
 	var atk_up_stacks = _count_status(attacker, StatusEffectIds.ATK_UP)
 	if atk_up_stacks > 0:
 		atk *= 1.0 + (0.25 * min(atk_up_stacks, 2))
 	if attacker.has_status(StatusEffectIds.ATK_DOWN):
 		var down_multiplier = _get_status_multiplier(attacker, StatusEffectIds.ATK_DOWN, 0.25)
 		atk *= down_multiplier
-	var defense = defender.stats.get("def", 0)
+	var defense = float(defender.stats.get("def", 0))
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
 		defense *= GUARD_STANCE_DEF_MULTIPLIER
 	if defender.has_status(StatusEffectIds.MAGE_ARMOR):
 		defense *= MAGE_ARMOR_DEF_MULTIPLIER
-	var base = (atk * multiplier) - (defense * DEFENSE_FACTOR)
-	var variance = base * randf_range(VARIANCE_MIN, VARIANCE_MAX)
-
+	var base_raw = (atk * multiplier) - (defense * DEFENSE_FACTOR)
+	var base_after_clamp = max(1.0, base_raw)
+	var variance_roll = randf_range(VARIANCE_MIN, VARIANCE_MAX)
+	var variance = base_after_clamp * variance_roll
+	var components: Array = [{
+		"type": "normal",
+		"label": "BASE",
+		"amount": max(1, int(floor(variance)))
+	}]
 	if attacker.has_status(StatusEffectIds.FIRE_IMBUE):
-		variance += randi_range(1, 4)
+		var fire_bonus = randi_range(1, 4)
+		variance += fire_bonus
+		components.append({"type": "buff", "label": "FIRE", "amount": fire_bonus})
 	if attacker.has_status(StatusEffectIds.BLESS):
-		variance += randi_range(1, 4)
+		var bless_bonus = randi_range(1, 4)
+		variance += bless_bonus
+		components.append({"type": "buff", "label": "BLESS", "amount": bless_bonus})
 
 	if defender.has_status(StatusEffectIds.GUARD_STANCE):
 		variance *= GUARD_STANCE_DAMAGE_REDUCTION
 
 	variance *= damage_multiplier
-	return max(1, int(floor(variance)))
+	var total = max(1, int(floor(variance)))
+	var sum_components := 0
+	for entry in components:
+		sum_components += int(entry.get("amount", 0))
+	if sum_components != total:
+		components[0]["amount"] = int(components[0]["amount"]) + (total - sum_components)
+	return {
+		"total": total,
+		"components": components
+	}
 
 
 static func _count_status(actor: Node, status_id: String) -> int:

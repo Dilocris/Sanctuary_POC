@@ -17,6 +17,7 @@ const NINOS_INSPIRE_ATTACK := "ninos_inspire_attack"
 const NINOS_VICIOUS_MOCKERY := "ninos_vicious_mockery"
 const NINOS_HEALING_WORD := "ninos_healing_word"
 const NINOS_BLESS := "ninos_bless"
+const NINOS_CLEANSE := "ninos_cleanse"
 
 const CAT_FIRE_BOLT := "catraca_fire_bolt"
 const CAT_FIREBALL := "catraca_fireball"

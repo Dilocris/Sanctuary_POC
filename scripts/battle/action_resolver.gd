@@ -60,6 +60,9 @@ func execute_basic_attack(attacker_id: String, target_id: String, multiplier: fl
 		"hit": true,
 		"damage": damage,
 		"bonus": bonus_dmg,
+		"damage_components": summary.get("damage_components", []),
+		"damage_components_by_hit": summary.get("damage_components_by_hit", []),
+		"damage_sources": summary.get("damage_sources", []),
 		"attacker_id": attacker_id,
 		"target_id": target_id
 	}).to_dict()
@@ -90,13 +93,19 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				actor.consume_resources(action)
-			var flurry_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0), action.get("tags", []))
+			var flurry_hit_payloads = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, action.get("multiplier", 1.0), action.get("tags", []))
+			var flurry_hits: Array = []
+			var flurry_components_by_hit: Array = []
 			var flurry_total = 0
-			for hit in flurry_hits:
-				flurry_total += int(hit)
+			for hit_payload in flurry_hit_payloads:
+				var hit_damage = int(hit_payload.get("damage", 0))
+				flurry_hits.append(hit_damage)
+				flurry_total += hit_damage
+				flurry_components_by_hit.append(hit_payload.get("damage_components", []))
 			return ActionResult.new(true, "", {
 				"damage": flurry_total,
 				"damage_instances": flurry_hits,
+				"damage_components_by_hit": flurry_components_by_hit,
 				"hits": 2,
 				"attacker_id": actor_id,
 				"target_id": targets[0]
@@ -278,6 +287,24 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				"targets": targets,
 				"attacker_id": actor_id
 			}).to_dict()
+		ActionIds.NINOS_CLEANSE:
+			if targets.size() == 0:
+				return ActionResult.new(false, "missing_target").to_dict()
+			if actor != null:
+				actor.consume_resources(action)
+			var target_cleanse = _battle_manager.get_actor_by_id(targets[0])
+			if target_cleanse == null:
+				return ActionResult.new(false, "missing_target").to_dict()
+			_battle_manager._remove_negative_statuses(target_cleanse)
+			var cleanse_heal = 20
+			target_cleanse.heal(cleanse_heal)
+			_battle_manager.add_message(actor.display_name + " cleanses " + target_cleanse.display_name + "!")
+			return ActionResult.new(true, "", {
+				"healed": cleanse_heal,
+				"buff": "cleanse",
+				"attacker_id": actor_id,
+				"target_id": targets[0]
+			}).to_dict()
 		ActionIds.NINOS_INSPIRE_ATTACK:
 			if targets.size() == 0:
 				return ActionResult.new(false, "missing_target").to_dict()
@@ -313,6 +340,7 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 						_battle_manager.add_message("Twin Spell hits " + extra.display_name + " for " + str(dmg_fb) + "!")
 			return ActionResult.new(true, "", {
 				"damage": dmg_fb,
+				"damage_components": [{"type": "normal", "label": "BASE", "amount": dmg_fb}],
 				"element": "fire",
 				"attacker_id": actor_id,
 				"target_id": targets[0],
@@ -338,7 +366,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					dmg_val = _battle_manager._apply_bless_bonus(actor, dmg_val)
 					_apply_damage_with_limit(actor, t_fireball, dmg_val)
 					hit_targets.append(t_fireball.display_name)
-					multi_target_damage.append({"target_id": t_id, "damage": dmg_val})
+					multi_target_damage.append({
+						"target_id": t_id,
+						"damage": dmg_val,
+						"components": [{"type": "normal", "label": "BASE", "amount": dmg_val}]
+					})
 					total_dmg_fireball += dmg_val
 			_battle_manager.add_message(actor.display_name + " casts Fireball! Hits: " + ", ".join(hit_targets))
 			return ActionResult.new(true, "", {
@@ -480,7 +512,18 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 			_battle_manager.battle_state.flags.marcus_pull_target = targets[0]
 			var pulled = _battle_manager.get_actor_by_id(targets[0])
 			if pulled != null:
+				var grasp_damage = randi_range(22, 34)
+				_apply_damage_with_limit(actor, pulled, grasp_damage)
+				pulled.add_status(StatusEffectFactory.atk_down(2, 0.2))
 				_battle_manager.add_message(pulled.display_name + " is dragged toward Marcus!")
+				_battle_manager.add_message(pulled.display_name + " is weakened by the grasp!")
+				return ActionResult.new(true, "", {
+					"pull": targets[0],
+					"damage": grasp_damage,
+					"debuff": "atk_down",
+					"attacker_id": actor_id,
+					"target_id": targets[0]
+				}).to_dict()
 			return ActionResult.new(true, "", {"pull": targets[0]}).to_dict()
 		ActionIds.BOS_DARK_REGEN:
 			if actor != null:
@@ -495,13 +538,19 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 				return ActionResult.new(false, "missing_target").to_dict()
 			if actor != null:
 				_battle_manager.add_message(_battle_manager._format_enemy_action(actor, action_id, targets))
-			var rage_hits = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, 1.2, action.get("tags", []))
+			var rage_hit_payloads = _battle_manager._apply_attack_hits(actor_id, targets[0], 2, 1.2, action.get("tags", []))
+			var rage_hits: Array = []
+			var rage_components_by_hit: Array = []
 			var total_rage = 0
-			for hit in rage_hits:
-				total_rage += int(hit)
+			for hit_payload in rage_hit_payloads:
+				var rage_damage = int(hit_payload.get("damage", 0))
+				rage_hits.append(rage_damage)
+				total_rage += rage_damage
+				rage_components_by_hit.append(hit_payload.get("damage_components", []))
 			return ActionResult.new(true, "", {
 				"damage": total_rage,
 				"damage_instances": rage_hits,
+				"damage_components_by_hit": rage_components_by_hit,
 				"attacker_id": actor_id,
 				"target_id": targets[0]
 			}).to_dict()
@@ -518,7 +567,11 @@ func _resolve_action(action: Dictionary) -> Dictionary:
 					_apply_damage_with_limit(actor, t, dmg)
 					t.add_status(StatusEffectFactory.poison())
 					hit_targets.append(t_id)
-					venom_multi_dmg.append({"target_id": t_id, "damage": dmg})
+					venom_multi_dmg.append({
+						"target_id": t_id,
+						"damage": dmg,
+						"components": [{"type": "poison", "label": "VENOM", "amount": dmg}]
+					})
 					total += dmg
 			return ActionResult.new(true, "", {
 				"damage_total": total,

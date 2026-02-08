@@ -46,6 +46,8 @@ var active_player_id = ""
 var battle_over: bool = false
 var pending_enemy_action: Dictionary = {}
 var input_locked: bool = false
+var current_pending_action_id = ""
+var current_pending_target_mode: String = "SINGLE"
 const LOWER_UI_TOP := 492
 @export var enemy_intent_duration := 2.0
 
@@ -66,9 +68,9 @@ const BOSS_DATA_PATHS := [
 ]
 const DIFFICULTY_ORDER := ["Story", "Normal", "Hard"]
 const DIFFICULTY_DESCRIPTIONS := {
-	"Story": "Easier battles. Party HP up, enemy HP down, reduced rewards.",
+	"Story": "Easier battles. Party HP/ATK up, weaker enemies, reduced rewards.",
 	"Normal": "Baseline tuning with standard rewards.",
-	"Hard": "Tougher battles. Party HP down, enemy HP up, increased rewards."
+	"Hard": "Tougher battles. Enemies gain HP/ATK, party HP drops, and DOT effects hit harder."
 }
 
 const LEGACY_PARTY_DATA := [
@@ -512,9 +514,12 @@ func _show_action_visuals(payload: Dictionary) -> void:
 		for hit_data in multi_hits:
 			var mt_id = hit_data.get("target_id", "")
 			var mt_dmg = hit_data.get("damage", 0)
+			var mt_components = hit_data.get("components", [])
 			var mt_target = battle_manager.get_actor_by_id(mt_id)
 			if mt_target:
 				_spawn_damage_numbers(mt_id, [mt_dmg])
+				if mt_components is Array and not mt_components.is_empty():
+					animation_controller.spawn_damage_components(mt_id, mt_components)
 				_play_hit_shake(mt_id)
 				var mt_sprite = actor_sprites.get(mt_id, null)
 				game_feel_controller.on_damage_dealt(mt_dmg, mt_sprite)
@@ -524,8 +529,13 @@ func _show_action_visuals(payload: Dictionary) -> void:
 		pending_damage_messages.append("Damage: " + str(mt_total))
 	elif payload.has("damage_instances"):
 		var instances = _dict_get(payload, "damage_instances", [])
+		var components_by_hit = _dict_get(payload, "damage_components_by_hit", [])
 		if target:
 			_spawn_damage_numbers(target_id, instances)
+			if components_by_hit is Array:
+				for comp_set in components_by_hit:
+					if comp_set is Array and not comp_set.is_empty():
+						animation_controller.spawn_damage_components(target_id, comp_set)
 			_play_hit_shake(target_id)
 			var total_dmg = 0
 			for hit in instances:
@@ -547,6 +557,9 @@ func _show_action_visuals(payload: Dictionary) -> void:
 		var dmg = payload["damage"]
 		if target:
 			_spawn_damage_numbers(target_id, [dmg])
+			var damage_components = _dict_get(payload, "damage_components", [])
+			if damage_components is Array and not damage_components.is_empty():
+				animation_controller.spawn_damage_components(target_id, damage_components)
 			_play_hit_shake(target_id)
 			var target_sprite = actor_sprites.get(target_id, null)
 			game_feel_controller.on_damage_dealt(dmg, target_sprite)
@@ -563,22 +576,24 @@ func _show_action_visuals(payload: Dictionary) -> void:
 
 	# Handle Status/Buffs (Simplified)
 	if payload.has("buff"):
+		var buff_name = _format_status_string(str(payload["buff"]))
 		if target: # Self buff usually
-			_create_floating_text(target.position, "+" + str(payload["buff"]), Color.CYAN)
+			_create_floating_text(target.position, "+" + buff_name, Color.CYAN)
 		_create_status_indicator(_dict_get(payload, "attacker_id", _dict_get(payload, "target_id", "")))
-		pending_status_messages.append("Buff: " + str(payload["buff"]))
+		pending_status_messages.append("Buff: " + buff_name)
 	elif payload.has("debuff"):
+		var debuff_name = _format_status_string(str(payload["debuff"]))
 		if target:
-			_create_floating_text(target.position, "-" + str(payload["debuff"]), Color.ORANGE)
+			_create_floating_text(target.position, "-" + debuff_name, Color.ORANGE)
 			_play_hit_shake(target_id)
 		_create_status_indicator(_dict_get(payload, "target_id", ""))
-		pending_status_messages.append("Debuff: " + str(payload["debuff"]))
+		pending_status_messages.append("Debuff: " + debuff_name)
 	elif payload.has("stun_applied") and payload["stun_applied"]:
 		if target:
 			_create_floating_text(target.position, "STUNNED", Color.YELLOW)
 			_play_hit_shake(target_id)
 		_create_status_indicator(_dict_get(payload, "target_id", ""))
-		pending_status_messages.append("Status: STUN")
+		pending_status_messages.append("Status: Stun")
 
 
 func _on_battle_ended(result: String) -> void:
@@ -780,15 +795,16 @@ func _on_menu_action_selected(action_id: String) -> void:
 	if target_mode == "SELF":
 		_enqueue_and_execute(action_id, [active_player_id])
 	elif target_mode == "ALL":
-		var target_ids = []
-		for t in target_pool:
-			target_ids.append(t.id)
-		_enqueue_and_execute(action_id, target_ids)
+		current_pending_action_id = action_id
+		current_pending_target_mode = "ALL"
+		target_cursor.start_selection(target_pool, "ALL")
 	elif target_mode == "DOUBLE":
+		current_pending_target_mode = "DOUBLE"
 		target_cursor.start_selection(target_pool, "DOUBLE")
 		current_pending_action_id = action_id
 	else:
 		current_pending_action_id = action_id
+		current_pending_target_mode = "SINGLE"
 		target_cursor.start_selection(target_pool, "SINGLE")
 
 
@@ -804,12 +820,12 @@ func _on_menu_changed(_items: Array) -> void:
 		_update_menu_disables(actor)
 
 
-var current_pending_action_id = ""
-
 func _on_target_selected(target_ids: Array) -> void:
 	# Enqueue the pending action with these targets
 	target_cursor.deactivate()
 	_enqueue_and_execute(current_pending_action_id, target_ids)
+	current_pending_action_id = ""
+	current_pending_target_mode = "SINGLE"
 
 func _on_target_canceled() -> void:
 	# Go back to menu
@@ -819,6 +835,8 @@ func _on_target_canceled() -> void:
 	if actor:
 		battle_menu.set_enabled(true)
 		battle_menu.setup(actor)
+	current_pending_action_id = ""
+	current_pending_target_mode = "SINGLE"
 
 func _enqueue_and_execute(action_id: String, target_ids: Array) -> void:
 	# Construct dictionary via Factory is tricky dynamically without a "create_by_id" method
@@ -876,6 +894,15 @@ func _create_status_indicator(actor_id: String) -> void:
 			anchor = actor.global_position
 	if anchor != Vector2.ZERO:
 		_create_floating_text(anchor, "STATUS", Color.SKY_BLUE)
+
+
+func _format_status_string(raw: String) -> String:
+	if raw.is_empty():
+		return ""
+	var words = raw.to_lower().split("_", false)
+	for i in range(words.size()):
+		words[i] = words[i].capitalize()
+	return " ".join(words)
 
 
 func _update_menu_disables(actor: Character) -> void:
@@ -1163,11 +1190,13 @@ func _transition_after_rewards() -> void:
 func _on_status_added(actor_id: String, status_id: String) -> void:
 	if status_id == StatusEffectIds.POISON:
 		_start_poison_tint(actor_id)
+	ui_manager.update_party_status(_apply_active_name_style)
 	ui_manager.update_status_effects_text()
 
 func _on_status_removed(actor_id: String, status_id: String) -> void:
 	if status_id == StatusEffectIds.POISON:
 		_stop_poison_tint(actor_id)
+	ui_manager.update_party_status(_apply_active_name_style)
 	ui_manager.update_status_effects_text()
 
 func _start_poison_tint(actor_id: String) -> void:

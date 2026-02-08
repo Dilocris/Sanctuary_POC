@@ -1,11 +1,11 @@
 extends RefCounted
 class_name StatusEffectFactory
 
-static func poison(turns: int = 3, damage: int = 10) -> StatusEffect:
+static func poison(turns: int = 3, damage: int = 16) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.POISON, turns, damage, [StatusTags.NEGATIVE, StatusTags.DOT, StatusTags.CLEANSABLE])
 
 
-static func burn(turns: int = 2, damage: int = 8) -> StatusEffect:
+static func burn(turns: int = 2, damage: int = 12) -> StatusEffect:
 	return StatusEffect.new(StatusEffectIds.BURN, turns, damage, [StatusTags.NEGATIVE, StatusTags.DOT, StatusTags.ELEMENTAL, StatusTags.CLEANSABLE])
 
 

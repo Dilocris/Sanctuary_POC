@@ -152,7 +152,8 @@ func _build_submenu(category: String) -> void:
 				menu_items.append({"label": "Inspire (Atk)", "id": ActionIds.NINOS_INSPIRE_ATTACK, "desc": "1 Insp. Ally's next attack deals +1d8 bonus dmg."})
 				menu_items.append({"label": "Vicious Mockery", "id": ActionIds.NINOS_VICIOUS_MOCKERY, "desc": "5 MP. Damage target and apply ATK Down."})
 				menu_items.append({"label": "Healing Word", "id": ActionIds.NINOS_HEALING_WORD, "desc": "6 MP. Restore HP to an ally."})
-				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP. Party gains +1d4 dmg for 2 turns."})
+				menu_items.append({"label": "Bless", "id": ActionIds.NINOS_BLESS, "desc": "10 MP. All allies gain bonus damage for 2 turns."})
+				menu_items.append({"label": "Cleanse", "id": ActionIds.NINOS_CLEANSE, "desc": "8 MP. Remove cleansable debuffs from an ally and heal 20 HP."})
 		"catraca":
 			if category == "SKILL_SUB":
 				menu_items.append({"label": "Fireball", "id": ActionIds.CAT_FIREBALL, "desc": "18 MP. Fire damage to all enemies."})

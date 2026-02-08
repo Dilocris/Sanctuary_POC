@@ -23,6 +23,7 @@ static func create_action(action_id: String, actor_id: String, targets: Array) -
 		ActionIds.LUD_TAUNT: return ludwig_taunt(actor_id)
 		# Ninos
 		ActionIds.NINOS_BLESS: return ninos_bless(actor_id, targets)
+		ActionIds.NINOS_CLEANSE: return ninos_cleanse(actor_id, t1)
 		ActionIds.NINOS_HEALING_WORD: return ninos_healing_word(actor_id, t1)
 		ActionIds.NINOS_VICIOUS_MOCKERY: return ninos_vicious_mockery(actor_id, t1)
 		ActionIds.NINOS_INSPIRE_ATTACK: return ninos_inspire_attack(actor_id, t1)
@@ -136,6 +137,8 @@ static func _legacy_template(action_id: String) -> Dictionary:
 			return {"action_id": ActionIds.NINOS_HEALING_WORD, "mp_cost": 6, "tags": [ActionTags.MAGICAL, ActionTags.HEALING, ActionTags.SINGLE]}
 		ActionIds.NINOS_BLESS:
 			return {"action_id": ActionIds.NINOS_BLESS, "mp_cost": 10, "tags": [ActionTags.MAGICAL, ActionTags.BUFF, ActionTags.ALL_ALLIES]}
+		ActionIds.NINOS_CLEANSE:
+			return {"action_id": ActionIds.NINOS_CLEANSE, "mp_cost": 8, "tags": [ActionTags.MAGICAL, ActionTags.HEALING, ActionTags.BUFF, ActionTags.SINGLE]}
 		ActionIds.CAT_FIRE_BOLT:
 			return {"action_id": ActionIds.CAT_FIRE_BOLT, "mp_cost": 0, "tags": [ActionTags.MAGICAL, ActionTags.SINGLE, ActionTags.ELEMENTAL]}
 		ActionIds.CAT_FIREBALL:
@@ -235,6 +238,10 @@ static func ninos_healing_word(actor_id: String, target_id: String) -> Dictionar
 
 static func ninos_bless(actor_id: String, target_ids: Array) -> Dictionary:
 	return _build_action(ActionIds.NINOS_BLESS, actor_id, target_ids)
+
+
+static func ninos_cleanse(actor_id: String, target_id: String) -> Dictionary:
+	return _build_action(ActionIds.NINOS_CLEANSE, actor_id, [target_id])
 
 
 static func catraca_fire_bolt(actor_id: String, target_id: String) -> Dictionary:

@@ -28,6 +28,8 @@ var _idle_textures: Dictionary = {}       # actor_id -> Texture2D (idle sheet fo
 var _idle_configs: Dictionary = {}        # actor_id -> {hframes, vframes} for idle restoration
 var _attack_playing: Dictionary = {}      # actor_id -> true while attack anim is active
 var _is_shutting_down: bool = false
+var _pixel_font: Font
+var _pixel_font_bold: Font
 
 
 func has_spritesheet_idle(actor_id: String) -> bool:
@@ -74,6 +76,14 @@ func setup(
 	_actor_nodes = actor_nodes
 	_actor_root_positions = actor_root_positions
 	_is_shutting_down = false
+	_load_float_fonts()
+
+
+func _load_float_fonts() -> void:
+	if ResourceLoader.exists("res://assets/fonts/Silkscreen-Regular.ttf"):
+		_pixel_font = load("res://assets/fonts/Silkscreen-Regular.ttf")
+	if ResourceLoader.exists("res://assets/fonts/Silkscreen-Bold.ttf"):
+		_pixel_font_bold = load("res://assets/fonts/Silkscreen-Bold.ttf")
 
 
 func shutdown() -> void:
@@ -108,6 +118,10 @@ func create_floating_text(pos: Vector2, text: String, color: Color) -> void:
 	label.modulate = color
 	label.position = pos + Vector2(0, -50)
 	label.add_theme_font_size_override("font_size", 24)
+	if _pixel_font:
+		label.add_theme_font_override("font", _pixel_font)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	label.add_theme_constant_override("outline_size", 2)
 	if not _safe_add_to_scene(label):
 		return
 
@@ -153,6 +167,10 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 	label.modulate = color
 	label.position = pos + Vector2(0, -64)
 	label.add_theme_font_size_override("font_size", font_size)
+	if is_heavy and _pixel_font_bold:
+		label.add_theme_font_override("font", _pixel_font_bold)
+	elif _pixel_font:
+		label.add_theme_font_override("font", _pixel_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 3 if is_heavy else 2)
 	if not _safe_add_to_scene(label):
@@ -186,6 +204,8 @@ func create_miss_text(pos: Vector2) -> void:
 	label.modulate = Color(0.9, 0.95, 1.0)
 	label.position = pos + Vector2(0, -64)
 	label.add_theme_font_size_override("font_size", MISS_FONT)
+	if _pixel_font_bold:
+		label.add_theme_font_override("font", _pixel_font_bold)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 3)
 	if not _safe_add_to_scene(label):
@@ -208,6 +228,8 @@ func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
 	label.modulate = color
 	label.position = pos + Vector2(0, -40)
 	label.add_theme_font_size_override("font_size", 22)
+	if _pixel_font:
+		label.add_theme_font_override("font", _pixel_font)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 2)
 	if not _safe_add_to_scene(label):
@@ -215,6 +237,70 @@ func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
 	var tween = _scene_root.create_tween()
 	tween.parallel().tween_property(label, "position:y", label.position.y - 30, 0.9)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
+	tween.tween_callback(label.queue_free)
+
+
+func spawn_damage_components(target_id: String, components: Array) -> void:
+	if not _can_use_scene_root():
+		return
+	if components.is_empty():
+		return
+	var actor = _battle_manager.get_actor_by_id(target_id)
+	if actor == null:
+		return
+	var index := 0
+	for component in components:
+		if not (component is Dictionary):
+			continue
+		var amount = int(component.get("amount", 0))
+		if amount <= 0:
+			continue
+		var source_type = str(component.get("type", "normal"))
+		var color = _component_color(source_type)
+		var text = "+" + str(amount)
+		var delay = 0.08 * float(index)
+		var offset = Vector2(46 + (10 * index), -84 - (8 * index))
+		var timer = _scene_root.get_tree().create_timer(delay)
+		var pos = actor.position + offset
+		timer.timeout.connect(func():
+			_create_component_text(pos, text, color)
+		)
+		index += 1
+
+
+func _component_color(source_type: String) -> Color:
+	match source_type:
+		"crit":
+			return Color(1.0, 0.22, 0.15)
+		"buff":
+			return Color(1.0, 0.9, 0.25)
+		"poison":
+			return Color(0.72, 0.35, 0.95)
+		"burn":
+			return Color(1.0, 0.5, 0.18)
+		_:
+			return Color(1.0, 0.56, 0.18)
+
+
+func _create_component_text(pos: Vector2, text: String, color: Color) -> void:
+	if not _can_use_scene_root():
+		return
+	var label = Label.new()
+	label.text = text
+	label.modulate = color
+	label.position = pos
+	label.add_theme_font_size_override("font_size", 18)
+	if _pixel_font_bold:
+		label.add_theme_font_override("font", _pixel_font_bold)
+	elif _pixel_font:
+		label.add_theme_font_override("font", _pixel_font)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	label.add_theme_constant_override("outline_size", 2)
+	if not _safe_add_to_scene(label):
+		return
+	var tween = _scene_root.create_tween()
+	tween.parallel().tween_property(label, "position:y", label.position.y - 24, 0.65)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.65)
 	tween.tween_callback(label.queue_free)
 
 

@@ -107,12 +107,15 @@ func _apply_damage(ctx: Dictionary, spec: Dictionary) -> void:
 	var targets: Array = ctx.targets
 	var summary = ctx.summary
 	var damage_instances: Array = []
+	var damage_components_by_hit: Array = []
+	var damage_sources: Array = []
 	var damage_total := 0
 
 	if targets.is_empty():
 		return
 
 	var base_damage_instances: Array = []
+	var physical_breakdowns: Array = []
 	var bonus = _resolve_bonus_damage(ctx, spec)
 
 	if spec.has("damage_by_target"):
@@ -126,17 +129,25 @@ func _apply_damage(ctx: Dictionary, spec: Dictionary) -> void:
 			else:
 				per_target_instances = [target_damage]
 			for base_damage in per_target_instances:
-				var damage_value = int(base_damage) + bonus
+				var base_amount = int(base_damage)
+				var hit_components: Array = [{"type": "normal", "label": "BASE", "amount": base_amount}]
+				var damage_value = base_amount + bonus
+				if bonus > 0:
+					hit_components.append({"type": "buff", "label": "BONUS", "amount": bonus})
 				if ctx.summary.crit:
+					var pre_crit = damage_value
 					damage_value = int(round(damage_value * DamageCalculator.CRIT_MULTIPLIER))
+					hit_components.append({"type": "crit", "label": "CRIT", "amount": damage_value - pre_crit})
 				damage_instances.append(damage_value)
+				damage_components_by_hit.append(hit_components)
 				damage_total += damage_value
 				_apply_damage_with_limit(actor, target, damage_value)
 				_add_event(ctx, EVENT_DAMAGE, {
 					"actor_id": actor.id,
 					"target_id": target.id,
 					"amount": damage_value,
-					"crit": ctx.summary.crit
+					"crit": ctx.summary.crit,
+					"components": hit_components
 				})
 	else:
 		if spec.has("damage_instances"):
@@ -144,33 +155,56 @@ func _apply_damage(ctx: Dictionary, spec: Dictionary) -> void:
 		elif spec.get("damage_mode", "") == "physical":
 			var target: Character = targets[0]
 			var multiplier = spec.get("multiplier", 1.0)
-			var base = DamageCalculator.calculate_physical_damage(actor, target, multiplier)
+			var breakdown = DamageCalculator.calculate_physical_damage_breakdown(actor, target, multiplier)
+			var base = int(breakdown.get("total", 0))
 			base_damage_instances = [base]
+			physical_breakdowns.append(breakdown)
 		elif spec.has("damage"):
 			base_damage_instances = [spec.damage]
 
 		if base_damage_instances.is_empty():
 			return
 
-		for base_damage in base_damage_instances:
-			var damage_value = int(base_damage) + bonus
+		for i in range(base_damage_instances.size()):
+			var base_damage = int(base_damage_instances[i])
+			var hit_components: Array = []
+			if spec.get("damage_mode", "") == "physical" and i < physical_breakdowns.size():
+				var breakdown = physical_breakdowns[i]
+				base_damage = int(breakdown.get("total", base_damage))
+				hit_components = breakdown.get("components", []).duplicate(true)
+			else:
+				hit_components.append({"type": "normal", "label": "BASE", "amount": base_damage})
+			var damage_value = base_damage + bonus
+			if bonus > 0:
+				hit_components.append({"type": "buff", "label": "BONUS", "amount": bonus})
 			if ctx.summary.crit:
+				var pre_crit = damage_value
 				damage_value = int(round(damage_value * DamageCalculator.CRIT_MULTIPLIER))
+				hit_components.append({"type": "crit", "label": "CRIT", "amount": damage_value - pre_crit})
 			damage_instances.append(damage_value)
+			damage_components_by_hit.append(hit_components)
 			damage_total += damage_value
 
 		var target_to_hit = targets[0]
-		for damage_value in damage_instances:
+		for i in range(damage_instances.size()):
+			var damage_value = damage_instances[i]
+			var hit_components: Array = damage_components_by_hit[i] if i < damage_components_by_hit.size() else []
 			_apply_damage_with_limit(actor, target_to_hit, damage_value)
 			_add_event(ctx, EVENT_DAMAGE, {
 				"actor_id": actor.id,
 				"target_id": target_to_hit.id,
 				"amount": damage_value,
-				"crit": ctx.summary.crit
+				"crit": ctx.summary.crit,
+				"components": hit_components
 			})
 
 	ctx.summary.bonus_damage = bonus
 	ctx.summary.damage_instances = damage_instances
+	ctx.summary.damage_components_by_hit = damage_components_by_hit
+	ctx.summary.damage_components = damage_components_by_hit[0] if damage_components_by_hit.size() > 0 else []
+	for comp in ctx.summary.damage_components:
+		damage_sources.append(str(comp.get("type", "")))
+	ctx.summary.damage_sources = damage_sources
 	ctx.summary.damage_total = damage_total
 	ctx.summary.damage = damage_instances[0] if damage_instances.size() > 0 else 0
 
