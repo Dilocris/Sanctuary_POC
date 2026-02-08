@@ -27,6 +27,7 @@ var _attack_configs: Dictionary = {}      # actor_id -> {path, hframes, vframes,
 var _idle_textures: Dictionary = {}       # actor_id -> Texture2D (idle sheet for restoration)
 var _idle_configs: Dictionary = {}        # actor_id -> {hframes, vframes} for idle restoration
 var _attack_playing: Dictionary = {}      # actor_id -> true while attack anim is active
+var _is_shutting_down: bool = false
 
 
 func has_spritesheet_idle(actor_id: String) -> bool:
@@ -72,6 +73,27 @@ func setup(
 	_actor_base_self_modulates = actor_base_self_modulates
 	_actor_nodes = actor_nodes
 	_actor_root_positions = actor_root_positions
+	_is_shutting_down = false
+
+
+func shutdown() -> void:
+	_is_shutting_down = true
+	# Invalidate global idle loop tokens so delayed callbacks no-op.
+	_global_idle_tokens.clear()
+	# Kill any live tweens we own.
+	for actor_id in _actor_sprites.keys():
+		cleanup_actor_tweens(actor_id)
+
+
+func _can_use_scene_root() -> bool:
+	return not _is_shutting_down and _scene_root != null and is_instance_valid(_scene_root) and _scene_root.is_inside_tree()
+
+
+func _safe_add_to_scene(node: Node) -> bool:
+	if not _can_use_scene_root():
+		return false
+	_scene_root.add_child(node)
+	return true
 
 
 # ============================================================================
@@ -79,12 +101,15 @@ func setup(
 # ============================================================================
 
 func create_floating_text(pos: Vector2, text: String, color: Color) -> void:
+	if not _can_use_scene_root():
+		return
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
 	label.position = pos + Vector2(0, -50)
 	label.add_theme_font_size_override("font_size", 24)
-	_scene_root.add_child(label)
+	if not _safe_add_to_scene(label):
+		return
 
 	var tween = _scene_root.create_tween()
 	tween.parallel().tween_property(label, "position:y", label.position.y - 50, 1.0)
@@ -93,6 +118,8 @@ func create_floating_text(pos: Vector2, text: String, color: Color) -> void:
 
 
 func spawn_damage_numbers(target_id: String, damages: Array) -> void:
+	if not _can_use_scene_root():
+		return
 	var actor = _battle_manager.get_actor_by_id(target_id)
 	if actor == null:
 		return
@@ -103,6 +130,8 @@ func spawn_damage_numbers(target_id: String, damages: Array) -> void:
 		var timer = _scene_root.get_tree().create_timer(delay)
 		var pos = actor.position + offset
 		timer.timeout.connect(func ():
+			if not _can_use_scene_root():
+				return
 			create_damage_text(pos, str(dmg_val), dmg_val)
 		)
 
@@ -113,6 +142,8 @@ const HEAVY_DAMAGE_FONT := 44
 const MISS_FONT := 30
 
 func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> void:
+	if not _can_use_scene_root():
+		return
 	var is_heavy = damage_value >= HEAVY_DAMAGE_THRESHOLD
 	var font_size = HEAVY_DAMAGE_FONT if is_heavy else NORMAL_DAMAGE_FONT
 	var color = Color(1.0, 0.3, 0.1) if is_heavy else Color(1.0, 0.55, 0.1)
@@ -124,7 +155,8 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 3 if is_heavy else 2)
-	_scene_root.add_child(label)
+	if not _safe_add_to_scene(label):
+		return
 
 	var tween = _scene_root.create_tween()
 	if is_heavy:
@@ -138,6 +170,8 @@ func create_damage_text(pos: Vector2, text: String, damage_value: int = 0) -> vo
 
 
 func spawn_miss_text(target_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	var actor = _battle_manager.get_actor_by_id(target_id)
 	if actor == null:
 		return
@@ -145,6 +179,8 @@ func spawn_miss_text(target_id: String) -> void:
 
 
 func create_miss_text(pos: Vector2) -> void:
+	if not _can_use_scene_root():
+		return
 	var label = Label.new()
 	label.text = "MISS"
 	label.modulate = Color(0.9, 0.95, 1.0)
@@ -152,7 +188,8 @@ func create_miss_text(pos: Vector2) -> void:
 	label.add_theme_font_size_override("font_size", MISS_FONT)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 3)
-	_scene_root.add_child(label)
+	if not _safe_add_to_scene(label):
+		return
 
 	var tween = _scene_root.create_tween()
 	label.pivot_offset = label.size / 2.0
@@ -164,6 +201,8 @@ func create_miss_text(pos: Vector2) -> void:
 
 
 func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
+	if not _can_use_scene_root():
+		return
 	var label = Label.new()
 	label.text = text
 	label.modulate = color
@@ -171,7 +210,8 @@ func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 2)
-	_scene_root.add_child(label)
+	if not _safe_add_to_scene(label):
+		return
 	var tween = _scene_root.create_tween()
 	tween.parallel().tween_property(label, "position:y", label.position.y - 30, 0.9)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
@@ -183,6 +223,8 @@ func create_status_tick_text(pos: Vector2, text: String, color: Color) -> void:
 # ============================================================================
 
 func start_idle_wiggle(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	if has_spritesheet_idle(actor_id):
 		return
 	var sprite = _actor_sprites.get(actor_id, null)
@@ -228,17 +270,25 @@ func update_active_idle_motion(active_id: String) -> void:
 
 
 func resume_idle_if_active(actor_id: String, delay: float) -> void:
+	if not _can_use_scene_root():
+		return
 	var timer = _scene_root.get_tree().create_timer(delay)
 	timer.timeout.connect(func ():
+		if not _can_use_scene_root():
+			return
 		if _battle_manager.battle_state.get("active_character_id", "") == actor_id:
 			start_idle_wiggle(actor_id)
 	)
 
 
 func delay_idle_after_recent_hit(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	if _shake_tweens.has(actor_id):
 		var timer = _scene_root.get_tree().create_timer(0.15)
 		timer.timeout.connect(func ():
+			if not _can_use_scene_root():
+				return
 			if _battle_manager.battle_state.get("active_character_id", "") == actor_id:
 				start_idle_wiggle(actor_id)
 		)
@@ -255,6 +305,8 @@ func should_delay_idle_after_hit(actor_id: String) -> bool:
 # ============================================================================
 
 func play_action_whip(actor_id: String, is_party_member: bool) -> void:
+	if not _can_use_scene_root():
+		return
 	var sprite = _actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return
@@ -277,6 +329,10 @@ func play_action_whip(actor_id: String, is_party_member: bool) -> void:
 # ============================================================================
 
 func play_attack_animation(actor_id: String, on_impact: Callable, on_complete: Callable) -> void:
+	if not _can_use_scene_root():
+		on_impact.call()
+		on_complete.call()
+		return
 	if not _attack_configs.has(actor_id):
 		on_impact.call()
 		on_complete.call()
@@ -335,6 +391,13 @@ func play_attack_animation(actor_id: String, on_impact: Callable, on_complete: C
 	var restore_offset = idle_offset
 
 	frame_timer.timeout.connect(func():
+		if _is_shutting_down or not is_instance_valid(frame_timer):
+			return
+		if not _can_use_scene_root() or sprite == null or not is_instance_valid(sprite):
+			frame_timer.stop()
+			frame_timer.queue_free()
+			_attack_playing.erase(actor_id)
+			return
 		var f = timer_get_frame(frame_timer) + 1
 		frame_timer.set_meta("frame", f)
 
@@ -371,7 +434,8 @@ func play_attack_animation(actor_id: String, on_impact: Callable, on_complete: C
 			frame_timer.set_meta("impact_fired", true)
 			impact_cb.call()
 	)
-	_scene_root.add_child(frame_timer)
+	if not _safe_add_to_scene(frame_timer):
+		_attack_playing.erase(actor_id)
 
 
 ## Helper to read frame counter from timer meta (avoids closure capture issues).
@@ -384,6 +448,8 @@ func timer_get_frame(timer: Timer) -> int:
 # ============================================================================
 
 func play_hit_shake(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	var sprite = _actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return
@@ -427,11 +493,15 @@ func _is_party_member(actor_id: String) -> bool:
 # ============================================================================
 
 func start_global_idle_all() -> void:
+	if not _can_use_scene_root():
+		return
 	for actor_id in _actor_nodes.keys():
 		start_global_idle(actor_id)
 
 
 func start_global_idle(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	if has_spritesheet_idle(actor_id):
 		return
 	var actor = _actor_nodes.get(actor_id, null)
@@ -448,11 +518,15 @@ func start_global_idle(actor_id: String) -> void:
 	var delay = float(phase_seed) / 100.0 * 1.2
 	var timer = _scene_root.get_tree().create_timer(delay)
 	timer.timeout.connect(func ():
+		if not _can_use_scene_root():
+			return
 		_global_idle_tick(actor_id, base_pos, token, true)
 	)
 
 
 func _global_idle_tick(actor_id: String, base_pos: Vector2, token: int, to_right: bool) -> void:
+	if not _can_use_scene_root():
+		return
 	if _global_idle_tokens.get(actor_id, 0) != token:
 		return
 	var actor = _actor_nodes.get(actor_id, null)
@@ -470,6 +544,8 @@ func _global_idle_tick(actor_id: String, base_pos: Vector2, token: int, to_right
 # ============================================================================
 
 func start_poison_tint(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	var sprite = _actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return
@@ -505,6 +581,8 @@ func stop_poison_tint(actor_id: String) -> void:
 # ============================================================================
 
 func flash_damage_tint(actor_id: String) -> void:
+	if not _can_use_scene_root():
+		return
 	var sprite = _actor_sprites.get(actor_id, null)
 	if sprite == null:
 		return

@@ -30,6 +30,11 @@ QUICK REFERENCE:
 - This check blocks handoff if it finds merge markers or split GDScript keywords (example: `i  f`) that cause class parse failures.
 - If Godot CLI is available locally, also run a headless parse/open to confirm script load before commit.
 
+### Procedure Update (Scene Transition Safety)
+- Before any scene reload/change, explicitly shut down async controllers that use timers/tweens (`BattleAnimationController.shutdown()`).
+- In timer/tween callbacks that can outlive a frame, guard with `is_instance_valid(...)` and a scene-root validity check before `add_child`, `create_tween`, or `get_tree`.
+- This prevents runtime crashes like: `Cannot call method 'add_child' on a previously freed instance.`
+
 ### 1. Completed Features
 - **Ludwig Von Tannhauser**:
   - `Guard Stance` (Toggle, Status Logic)

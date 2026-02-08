@@ -30,6 +30,14 @@ var actor_base_modulates: Dictionary = {}
 var actor_base_self_modulates: Dictionary = {}
 var actor_nodes: Dictionary = {}
 var actor_root_positions: Dictionary = {}
+var combat_log_tween: Tween
+var difficulty_overlay: ColorRect
+var difficulty_panel: Panel
+var difficulty_option: OptionButton
+var difficulty_desc_label: Label
+var difficulty_confirm_btn: Button
+var waiting_for_difficulty: bool = false
+var difficulty_selected_value: String = "Normal"
 
 var battle_menu: BattleMenu
 var target_cursor: Node2D
@@ -56,6 +64,12 @@ const ACTOR_DATA_PATHS := [
 const BOSS_DATA_PATHS := [
 	"res://data/actors/marcus_gelt.tres"
 ]
+const DIFFICULTY_ORDER := ["Story", "Normal", "Hard"]
+const DIFFICULTY_DESCRIPTIONS := {
+	"Story": "Easier battles. Party HP up, enemy HP down, reduced rewards.",
+	"Normal": "Baseline tuning with standard rewards.",
+	"Hard": "Tougher battles. Party HP down, enemy HP up, increased rewards."
+}
 
 const LEGACY_PARTY_DATA := [
 	{
@@ -258,8 +272,10 @@ func _ready() -> void:
 	for actor_id in renderer.ATTACK_SPRITESHEETS.keys():
 		animation_controller.register_attack_spritesheet(actor_id, renderer.ATTACK_SPRITESHEETS[actor_id])
 
+	await _prompt_for_difficulty_selection()
 	battle_manager.setup_state(party, enemies, battle_difficulty)
 	battle_manager.advance_state(BattleManager.BattleState.BATTLE_INIT)
+	message_log("Difficulty: " + battle_difficulty)
 
 	# Initialize boss HP bar with current values (no animation on first display)
 	if boss_hp_bar:
@@ -276,6 +292,13 @@ func _ready() -> void:
 	_process_turn_loop()
 
 
+func _exit_tree() -> void:
+	if animation_controller:
+		animation_controller.shutdown()
+	if game_feel_controller:
+		game_feel_controller.cleanup()
+
+
 func _make_character(data: Dictionary) -> Character:
 	var character = renderer.create_character(data)
 	var actor_id = _dict_get(data, "id", "")
@@ -289,6 +312,110 @@ func _make_character(data: Dictionary) -> Character:
 		_flash_damage_tint(actor_id, amount)
 	)
 	return character
+
+
+func _prompt_for_difficulty_selection() -> void:
+	difficulty_selected_value = battle_difficulty if DIFFICULTY_ORDER.has(battle_difficulty) else "Normal"
+	waiting_for_difficulty = true
+	_create_difficulty_picker_ui()
+	while waiting_for_difficulty:
+		await get_tree().process_frame
+	battle_difficulty = difficulty_selected_value
+
+
+func _create_difficulty_picker_ui() -> void:
+	difficulty_overlay = ColorRect.new()
+	difficulty_overlay.color = Color(0.0, 0.0, 0.0, 0.72)
+	difficulty_overlay.position = Vector2.ZERO
+	difficulty_overlay.size = Vector2(1152, 648)
+	difficulty_overlay.z_index = 200
+	add_child(difficulty_overlay)
+
+	difficulty_panel = Panel.new()
+	difficulty_panel.position = Vector2(336, 188)
+	difficulty_panel.size = Vector2(480, 270)
+	difficulty_panel.z_index = 201
+	difficulty_overlay.add_child(difficulty_panel)
+
+	var title = Label.new()
+	title.text = "Select Difficulty"
+	title.position = Vector2(24, 20)
+	title.size = Vector2(432, 32)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	if ui_manager and ui_manager._pixel_font_bold:
+		title.add_theme_font_override("font", ui_manager._pixel_font_bold)
+	difficulty_panel.add_child(title)
+
+	var subtitle = Label.new()
+	subtitle.text = "Choose before battle begins."
+	subtitle.position = Vector2(24, 56)
+	subtitle.size = Vector2(432, 20)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 12)
+	if ui_manager and ui_manager._pixel_font:
+		subtitle.add_theme_font_override("font", ui_manager._pixel_font)
+	difficulty_panel.add_child(subtitle)
+
+	difficulty_option = OptionButton.new()
+	difficulty_option.position = Vector2(96, 96)
+	difficulty_option.size = Vector2(288, 30)
+	if ui_manager and ui_manager._pixel_font:
+		difficulty_option.add_theme_font_override("font", ui_manager._pixel_font)
+	for choice in DIFFICULTY_ORDER:
+		difficulty_option.add_item(choice)
+	difficulty_panel.add_child(difficulty_option)
+	var selected_index = DIFFICULTY_ORDER.find(difficulty_selected_value)
+	if selected_index < 0:
+		selected_index = DIFFICULTY_ORDER.find("Normal")
+	difficulty_option.select(selected_index)
+	difficulty_option.item_selected.connect(_on_difficulty_option_selected)
+
+	difficulty_desc_label = Label.new()
+	difficulty_desc_label.position = Vector2(40, 138)
+	difficulty_desc_label.size = Vector2(400, 64)
+	difficulty_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	difficulty_desc_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	difficulty_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	difficulty_desc_label.add_theme_font_size_override("font_size", 12)
+	if ui_manager and ui_manager._pixel_font:
+		difficulty_desc_label.add_theme_font_override("font", ui_manager._pixel_font)
+	difficulty_panel.add_child(difficulty_desc_label)
+	_refresh_difficulty_description()
+
+	difficulty_confirm_btn = Button.new()
+	difficulty_confirm_btn.text = "Begin Battle"
+	difficulty_confirm_btn.position = Vector2(150, 214)
+	difficulty_confirm_btn.size = Vector2(180, 34)
+	difficulty_confirm_btn.focus_mode = Control.FOCUS_ALL
+	if ui_manager and ui_manager._pixel_font:
+		difficulty_confirm_btn.add_theme_font_override("font", ui_manager._pixel_font)
+	difficulty_confirm_btn.pressed.connect(_confirm_difficulty_selection)
+	difficulty_panel.add_child(difficulty_confirm_btn)
+	difficulty_confirm_btn.grab_focus()
+
+
+func _on_difficulty_option_selected(index: int) -> void:
+	if index < 0 or index >= DIFFICULTY_ORDER.size():
+		return
+	difficulty_selected_value = DIFFICULTY_ORDER[index]
+	_refresh_difficulty_description()
+
+
+func _refresh_difficulty_description() -> void:
+	if difficulty_desc_label:
+		difficulty_desc_label.text = DIFFICULTY_DESCRIPTIONS.get(difficulty_selected_value, "")
+
+
+func _confirm_difficulty_selection() -> void:
+	waiting_for_difficulty = false
+	if difficulty_overlay and is_instance_valid(difficulty_overlay):
+		difficulty_overlay.queue_free()
+	difficulty_overlay = null
+	difficulty_panel = null
+	difficulty_option = null
+	difficulty_desc_label = null
+	difficulty_confirm_btn = null
 
 
 func _make_boss(data: Dictionary) -> Boss:
@@ -837,17 +964,12 @@ func message_log(msg: String) -> void:
 	# Also update toast with delay
 	if combat_log_display:
 		combat_log_display.text = msg
-		# Simple "persistence": If a message comes too fast, it overwrites. 
-		# If user wants it to stay for +1s, we should verify it stays *at least* that long if no new msg comes.
-		# Ideally we'd have a queue. For now, we trust the turn delays (0.5s/1.0s) help.
-		# If we specifically want to FORCE it to persist, we'd need to block updates? 
-		# Or just ensure the *previous* toast isn't cleared too fast.
-		# Since we have pauses in the Turn Loop, this might be naturally handled.
-		# If not, let's add a visual "flash" or something.
-		var tween = create_tween()
+		if combat_log_tween and combat_log_tween.is_valid():
+			combat_log_tween.kill()
 		combat_log_display.modulate.a = 1.0
-		tween.tween_interval(3.0)
-		tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.5) # Fade out after 3s
+		combat_log_tween = create_tween()
+		combat_log_tween.tween_interval(3.0)
+		combat_log_tween.tween_property(combat_log_display, "modulate:a", 0.0, 1.5)
 
 func _create_action_dict(id: String, actor: String, targets: Array) -> Dictionary:
 	return ActionFactory.create_action(id, actor, targets)
@@ -1026,6 +1148,10 @@ func _show_rewards_summary() -> void:
 
 
 func _transition_after_rewards() -> void:
+	if animation_controller:
+		animation_controller.shutdown()
+	if game_feel_controller:
+		game_feel_controller.cleanup()
 	if rewards_panel:
 		rewards_panel.visible = false
 	if victory_next_scene != "" and ResourceLoader.exists(victory_next_scene):

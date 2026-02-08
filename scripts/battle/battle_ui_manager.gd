@@ -33,32 +33,42 @@ var _battle_manager: BattleManager
 
 # UI Constants - Moved lower UI closer to bottom edge
 const LOWER_UI_TOP := 492
-const PANEL_PADDING := 8
+const PANEL_PADDING := 4
 const ROW_SPACING := 2
 const COLUMN_SPACING := 8
 const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
 const INACTIVE_NAME_COLOR := Color(0.9, 0.9, 0.9)
 const ACTIVE_NAME_FONT_SIZE := 14
-const INACTIVE_NAME_FONT_SIZE := 12
+const INACTIVE_NAME_FONT_SIZE := 13
 const HP_BAR_HEIGHT := 20
 const MP_BAR_HEIGHT := 14
-const BAR_WIDTH := 130
-const NAME_WIDTH := 62
+const BAR_WIDTH := 176
+const NAME_WIDTH := 78
 const MP_COLOR := Color(0.25, 0.45, 0.85)
 
 # Fixed column layout positions (within party panel inner area)
-const COL_NAME_X := 4
-const COL_SEP1_X := 68
-const COL_BARS_X := 72
-const COL_SEP2_X := 206
-const COL_RES_X := 210
-const COL_RES_W := 78     # 8 cols * (8+2) - 2 = 78
-const COL_SEP3_X := 292
-const COL_LB_X := 296
-const COL_LB_BAR_X := 316 # After "LB" label
-const COL_LB_BAR_W := 64
+const COL_NAME_X := 8
+const COL_SEP1_X := 90
+const COL_BARS_X := 96
+const COL_SEP2_X := 276
+const COL_RES_X := 282
+const COL_RES_W := 86
+const COL_SEP3_X := 372
+const COL_LB_X := 378
+const COL_LB_BAR_X := 398
+const COL_LB_BAR_W := 132
+const LB_BAR_HEIGHT := 16
 const SEP_COLOR := Color(0.35, 0.35, 0.4, 0.4)
-const ROW_HEIGHT := 35
+const ROW_HEIGHT := 36
+const TOP_HUD_X := 24
+const TOP_HUD_W := 1104
+const ACRONYM_WORDS := {
+	"atk": "ATK",
+	"def": "DEF",
+	"hp": "HP",
+	"mp": "MP",
+	"lb": "LB"
+}
 
 # UI Elements
 var debug_panel: Control
@@ -70,6 +80,7 @@ var turn_order_display: Label
 var combat_log_display: Label
 var enemy_intent_label: Label
 var enemy_intent_bg: ColorRect
+var f1_hint_label: Label
 var phase_overlay: ColorRect
 var phase_label: Label
 var limit_overlay: ColorRect
@@ -144,36 +155,59 @@ func create_game_ui() -> void:
 
 	party_status_panel = Control.new()
 	party_status_panel.position = Vector2(PANEL_PADDING, PANEL_PADDING)
-	party_status_panel.size = Vector2(544, panel_height - PANEL_PADDING * 2)
+	party_status_panel.size = Vector2(panel_bg.size.x - PANEL_PADDING * 2, panel_height - PANEL_PADDING * 2)
 	panel_bg.add_child(party_status_panel)
+
+	# Top HUD strip (improves legibility of turn order and statuses).
+	var top_hud_bg = ColorRect.new()
+	top_hud_bg.position = Vector2(0, 6)
+	top_hud_bg.size = Vector2(1152, 62)
+	top_hud_bg.color = Color(0, 0, 0, 0.42)
+	top_hud_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scene_root.add_child(top_hud_bg)
 
 	# Turn Order Display (Top Center)
 	turn_order_display = Label.new()
-	turn_order_display.position = Vector2(350, 10)
-	turn_order_display.size = Vector2(400, 30)
+	turn_order_display.position = Vector2(TOP_HUD_X, 10)
+	turn_order_display.size = Vector2(TOP_HUD_W, 22)
 	turn_order_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	turn_order_display.add_theme_font_size_override("font_size", 13)
+	turn_order_display.add_theme_color_override("font_color", Color(0.96, 0.94, 0.85))
+	turn_order_display.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	turn_order_display.add_theme_constant_override("outline_size", 2)
+	turn_order_display.clip_text = true
 	_apply_pixel_font(turn_order_display)
 	_scene_root.add_child(turn_order_display)
 
 	# Status Effects Display (Centered below Turn Order)
 	status_effects_display = Label.new()
-	status_effects_display.position = Vector2(350, 40)
-	status_effects_display.size = Vector2(400, 30)
+	status_effects_display.position = Vector2(TOP_HUD_X, 32)
+	status_effects_display.size = Vector2(TOP_HUD_W, 24)
 	status_effects_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_effects_display.add_theme_font_size_override("font_size", 12)
+	status_effects_display.add_theme_color_override("font_color", Color(0.78, 0.9, 1.0))
+	status_effects_display.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	status_effects_display.add_theme_constant_override("outline_size", 2)
+	status_effects_display.clip_text = true
 	_apply_pixel_font(status_effects_display)
 	_scene_root.add_child(status_effects_display)
 
 	# Combat Log Toast (Above Bottom UI)
 	combat_log_display = Label.new()
-	combat_log_display.position = Vector2(200, 458)
-	combat_log_display.size = Vector2(700, 30)
+	combat_log_display.position = Vector2(180, 456)
+	combat_log_display.size = Vector2(792, 34)
 	combat_log_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	combat_log_display.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	combat_log_display.text = "Battle Start!"
+	combat_log_display.add_theme_font_size_override("font_size", 14)
+	combat_log_display.add_theme_color_override("font_color", Color(1.0, 0.95, 0.75))
+	combat_log_display.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	combat_log_display.add_theme_constant_override("outline_size", 3)
 	_apply_pixel_font(combat_log_display)
 
 	var bg = ColorRect.new()
 	bg.show_behind_parent = true
-	bg.color = Color(0, 0, 0, 0.5)
+	bg.color = Color(0, 0, 0, 0.66)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	combat_log_display.add_child(bg)
@@ -245,13 +279,17 @@ func create_game_ui() -> void:
 	_scene_root.add_child(battle_log_panel)
 
 	# F1 hint
-	var f1_hint = Label.new()
-	f1_hint.text = "F1: Settings"
-	f1_hint.position = Vector2(1060, 632)
-	f1_hint.add_theme_font_size_override("font_size", 10)
-	f1_hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.6))
-	_apply_pixel_font(f1_hint)
-	_scene_root.add_child(f1_hint)
+	f1_hint_label = Label.new()
+	f1_hint_label.text = "F1: SETTINGS"
+	f1_hint_label.position = Vector2(1000, 626)
+	f1_hint_label.size = Vector2(144, 20)
+	f1_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	f1_hint_label.add_theme_font_size_override("font_size", 11)
+	f1_hint_label.add_theme_color_override("font_color", Color(0.86, 0.86, 0.86, 0.9))
+	f1_hint_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	f1_hint_label.add_theme_constant_override("outline_size", 2)
+	_apply_pixel_font(f1_hint_label)
+	_scene_root.add_child(f1_hint_label)
 
 
 # ============================================================================
@@ -273,7 +311,10 @@ func update_turn_order_visual() -> void:
 	else:
 		display_order = order.slice(start_index, order.size()) + order.slice(0, start_index)
 
-	turn_order_display.text = "Turn Order: " + " > ".join(display_order)
+	var readable_order: Array[String] = []
+	for actor_id in display_order:
+		readable_order.append(_format_actor_display_name(str(actor_id)))
+	turn_order_display.text = _truncate_with_ellipsis("TURN ORDER: " + " > ".join(readable_order), 150)
 
 
 func update_status_effects_text() -> void:
@@ -282,21 +323,21 @@ func update_status_effects_text() -> void:
 		if member.status_effects.size() > 0:
 			var effect_names = []
 			for effect in member.status_effects:
-				effect_names.append(effect.id)
+				effect_names.append(_format_status_effect_name(str(effect.id)))
 			active_statuses.append(member.display_name + ": [" + ", ".join(effect_names) + "]")
 
 	for enemy in _battle_manager.battle_state.enemies:
 		if enemy.status_effects.size() > 0:
 			var effect_names = []
 			for effect in enemy.status_effects:
-				effect_names.append(effect.id)
+				effect_names.append(_format_status_effect_name(str(effect.id)))
 			active_statuses.append(enemy.display_name + ": [" + ", ".join(effect_names) + "]")
 
 	if status_effects_display:
 		if active_statuses.is_empty():
 			status_effects_display.text = ""
 		else:
-			status_effects_display.text = "Statuses: " + " | ".join(active_statuses)
+			status_effects_display.text = _truncate_with_ellipsis("STATUSES: " + " | ".join(active_statuses), 150)
 
 
 func update_party_status(apply_name_style_func: Callable) -> void:
@@ -340,7 +381,12 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 		if _party_lb_bars.has(actor_id):
 			_party_lb_bars[actor_id].value = actor.limit_gauge
 			if _party_lb_texts.has(actor_id):
-				_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
+				if actor.limit_gauge >= 100:
+					_party_lb_texts[actor_id].text = "READY"
+					_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.95, 1.0, 1.0))
+				else:
+					_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
+					_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
 			if _party_lb_fills.has(actor_id):
 				if actor.limit_gauge >= 100:
 					_party_lb_fills[actor_id].bg_color = Color(0.2, 0.6, 1.0)
@@ -463,10 +509,10 @@ func _create_party_ui() -> void:
 			var res_grid = ResourceDotGridClass.new()
 			res_grid.max_value = res_max
 			res_grid.fixed_columns = 8
-			res_grid.dot_size = 8
+			res_grid.dot_size = 9
 			res_grid.dot_spacing = 2
 			res_grid.row_spacing = 2
-			var grid_h = 2 * 8 + 1 * 2  # 18px
+			var grid_h = 2 * 9 + 1 * 2
 			res_grid.position = Vector2(COL_RES_X, row_y + int((ROW_HEIGHT - grid_h) / 2))
 			_party_resource_grids[actor_id] = res_grid
 			party_status_panel.add_child(res_grid)
@@ -474,10 +520,10 @@ func _create_party_ui() -> void:
 		# --- LB section (fixed column, all aligned) ---
 		var lb_label = Label.new()
 		lb_label.text = "LB"
-		lb_label.add_theme_font_size_override("font_size", 9)
-		lb_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.8))
+		lb_label.add_theme_font_size_override("font_size", 10)
+		lb_label.add_theme_color_override("font_color", Color(0.72, 0.8, 0.95))
 		lb_label.position = Vector2(COL_LB_X, row_y)
-		lb_label.size = Vector2(18, ROW_HEIGHT)
+		lb_label.size = Vector2(20, ROW_HEIGHT)
 		lb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		_apply_pixel_font(lb_label)
 		party_status_panel.add_child(lb_label)
@@ -486,9 +532,9 @@ func _create_party_ui() -> void:
 		lb_bar.min_value = 0
 		lb_bar.max_value = 100
 		lb_bar.value = actor.limit_gauge
-		lb_bar.position = Vector2(COL_LB_BAR_X, row_y + int((ROW_HEIGHT - 14) / 2))
-		lb_bar.size = Vector2(COL_LB_BAR_W, 14)
-		lb_bar.custom_minimum_size = Vector2(COL_LB_BAR_W, 14)
+		lb_bar.position = Vector2(COL_LB_BAR_X, row_y + int((ROW_HEIGHT - LB_BAR_HEIGHT) / 2))
+		lb_bar.size = Vector2(COL_LB_BAR_W, LB_BAR_HEIGHT)
+		lb_bar.custom_minimum_size = Vector2(COL_LB_BAR_W, LB_BAR_HEIGHT)
 		lb_bar.show_percentage = false
 
 		var lb_bg = StyleBoxFlat.new()
@@ -508,10 +554,13 @@ func _create_party_ui() -> void:
 		_party_lb_fills[actor_id] = lb_fill
 
 		var lb_text = Label.new()
-		lb_text.text = "%d%%" % actor.limit_gauge
-		lb_text.add_theme_font_size_override("font_size", 11)
+		lb_text.text = "READY" if actor.limit_gauge >= 100 else "%d%%" % actor.limit_gauge
+		lb_text.add_theme_font_size_override("font_size", 12)
 		lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lb_text.add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
+		lb_text.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		lb_text.add_theme_constant_override("outline_size", 2)
 		lb_text.set_anchors_preset(Control.PRESET_FULL_RECT)
 		_apply_pixel_font(lb_text)
 		lb_bar.add_child(lb_text)
@@ -710,3 +759,38 @@ func _stop_lb_pulse(actor_id: String) -> void:
 	if tween and tween.is_valid():
 		tween.kill()
 	_party_lb_tweens.erase(actor_id)
+
+
+func _format_actor_display_name(actor_id: String) -> String:
+	var actor = _battle_manager.get_actor_by_id(actor_id)
+	if actor == null:
+		actor = _battle_manager.get_actor_by_id(actor_id.to_lower())
+	if actor != null and actor.display_name != "":
+		return actor.display_name
+	return _format_identifier(actor_id)
+
+
+func _format_status_effect_name(effect_id: String) -> String:
+	return _format_identifier(effect_id)
+
+
+func _format_identifier(raw_value: String) -> String:
+	var cleaned = raw_value.strip_edges()
+	if cleaned == "":
+		return ""
+	var words = cleaned.to_lower().split("_", false)
+	for i in range(words.size()):
+		var word = words[i]
+		if ACRONYM_WORDS.has(word):
+			words[i] = ACRONYM_WORDS[word]
+		elif word != "":
+			words[i] = word.capitalize()
+	return " ".join(words)
+
+
+func _truncate_with_ellipsis(text: String, max_chars: int) -> String:
+	if text.length() <= max_chars:
+		return text
+	if max_chars <= 3:
+		return text.substr(0, max_chars)
+	return text.substr(0, max_chars - 3) + "..."
