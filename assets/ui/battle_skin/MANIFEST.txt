@@ -1,0 +1,40 @@
+﻿Battle UI Sprite Pack (generated)
+
+Location:
+- assets/ui/battle_skin/
+
+Primary 9-slice textures (recommended patch margins):
+- panel_bottom_9slice.png (64x64, margin 12)
+- panel_bottom_secondary_9slice.png (64x64, margin 12)
+- panel_command_9slice.png (48x48, margin 6)
+- panel_party_9slice.png (48x48, margin 6)
+- panel_description_9slice.png (48x48, margin 6)
+- top_turn_order_9slice.png (96x32, margin 14x10)
+- top_status_9slice.png (96x28, margin 14x9)
+- turn_center_plaque_9slice.png (220x32, margin 18x10)
+- menu_row_idle_9slice.png (32x20, margin 3)
+- menu_row_selected_9slice.png (32x20, margin 3)
+- lb_box_9slice.png (72x24, margin 5)
+- icon_slot_9slice.png (20x20, margin 4)
+- status_chip_9slice.png (24x16, margin 4)
+- bar_bg_9slice.png (128x14, margin 3)
+
+Element sprites:
+- hp_fill.png
+- mp_fill.png
+- pip_full.png
+- pip_empty.png
+- divider_h.png
+- divider_v.png
+- cursor_menu_arrow.png
+- ornament_corner_tl.png / tr / bl / br
+
+Intended mapping:
+- Top HUD bars -> top_turn_order_9slice, top_status_9slice
+- Turn banner -> turn_center_plaque_9slice
+- Bottom shell -> panel_bottom_9slice
+- Command/Description/Party panels -> command/description/party 9-slice
+- Selected command row -> menu_row_selected_9slice
+- Resource pips -> pip_full / pip_empty
+- LB percent box -> lb_box_9slice
+- Menu cursor -> cursor_menu_arrow

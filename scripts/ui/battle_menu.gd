@@ -13,10 +13,15 @@ var current_state = MenuState.DISABLED
 var active_actor: Character
 var main_options = ["Attack", "Skill", "Defend", "Item"]
 var current_selection_index: int = 0
+const SKIN_ROOT := "res://assets/ui/battle_skin/"
 
 # Mock UI Elements (Will be nodes in real scene)
 var action_list_container: VBoxContainer
-@onready var action_list_node = $Panel/ActionList
+@onready var command_panel: Panel = $Panel
+@onready var action_list_scroll: ScrollContainer = $Panel/ActionListScroll
+@onready var action_list_node = $Panel/ActionListScroll/ActionList
+@onready var name_separator: TextureRect = $Panel/NameSeparator
+@onready var description_panel: Panel = $DescriptionPanel
 @onready var description_label = $DescriptionPanel/Label
 @onready var actor_label = $Panel/ActorName
 
@@ -25,10 +30,23 @@ var disabled_actions: Dictionary = {}
 var input_block_until_ms: int = 0
 var cursor_nodes: Array = []
 var label_nodes: Array = []
+var row_panels: Array = []
 var pixel_font: Font
+var _skin_cursor: Texture2D
+var _row_style_idle: StyleBox
+var _row_style_selected: StyleBox
+var _ornament_tl: Texture2D
+var _ornament_tr: Texture2D
+var _ornament_bl: Texture2D
+var _ornament_br: Texture2D
 
 func _ready() -> void:
 	visible = false
+	_apply_skin()
+	if action_list_scroll:
+		action_list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		action_list_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		action_list_scroll.clip_contents = true
 
 func setup(actor: Character) -> void:
 	active_actor = actor
@@ -41,8 +59,13 @@ func setup(actor: Character) -> void:
 			actor_label.add_theme_font_override("font", pixel_font)
 		actor_label.add_theme_font_size_override("font_size", 13)
 		actor_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.6))
-	if description_label and pixel_font:
-		description_label.add_theme_font_override("font", pixel_font)
+	if description_label:
+		if pixel_font:
+			description_label.add_theme_font_override("font", pixel_font)
+		description_label.add_theme_font_size_override("font_size", 12)
+		description_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		description_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		description_label.add_theme_constant_override("outline_size", 2)
 	_build_main_menu()
 	_update_selection()
 	_block_input(150)
@@ -145,15 +168,33 @@ func _render_menu_items() -> void:
 		child.queue_free()
 	cursor_nodes.clear()
 	label_nodes.clear()
+	row_panels.clear()
+
+	if action_list_scroll:
+		var list_width := 190.0
+		if action_list_scroll.size.x > 0.0:
+			list_width = maxi(0.0, action_list_scroll.size.x - 4.0)
+		action_list_node.custom_minimum_size = Vector2(list_width, 0.0)
 	
 	for item in menu_items:
+		var row_panel = PanelContainer.new()
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_panel.custom_minimum_size = Vector2(0, 21)
+		row_panel.add_theme_stylebox_override("panel", _row_style_idle)
+		action_list_node.add_child(row_panel)
+		row_panels.append(row_panel)
+
 		var row = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
-		var cursor = ColorRect.new()
-		cursor.color = Color(1.0, 0.9, 0.4)
-		cursor.custom_minimum_size = Vector2(8, 8)
-		cursor.pivot_offset = Vector2(4, 4)
-		cursor.rotation = 0.785398
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_panel.add_child(row)
+
+		var cursor = TextureRect.new()
+		cursor.texture = _skin_cursor
+		cursor.custom_minimum_size = Vector2(16, 16)
+		cursor.size = Vector2(16, 16)
+		cursor.stretch_mode = TextureRect.STRETCH_SCALE
+		cursor.modulate = Color(0.92, 0.84, 0.56, 0.95)
 		cursor.visible = false
 		row.add_child(cursor)
 		cursor_nodes.append(cursor)
@@ -162,12 +203,16 @@ func _render_menu_items() -> void:
 		var label_text = item["label"]
 		if disabled_actions.has(item["id"]):
 			label_text += " (X)"
-		label.text = label_text
+		label.text = label_text.to_upper()
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.clip_text = true
 		if pixel_font:
 			label.add_theme_font_override("font", pixel_font)
+		label.add_theme_font_size_override("font_size", 14)
+		label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		label.add_theme_constant_override("outline_size", 2)
 		row.add_child(label)
 		label_nodes.append(label)
-		action_list_node.add_child(row)
 	
 	if menu_items.is_empty():
 		current_selection_index = 0
@@ -188,12 +233,16 @@ func _update_selection() -> void:
 			break
 		var item_id = menu_items[idx].get("id", "")
 		if idx == current_selection_index:
-			label.modulate = Color(1, 1, 0) # Highlight yellow
+			label.modulate = Color(0.95, 0.88, 0.62)
 			if idx < cursor_nodes.size():
 				cursor_nodes[idx].visible = true
+			if idx < row_panels.size():
+				row_panels[idx].add_theme_stylebox_override("panel", _row_style_selected)
 		else:
 			if idx < cursor_nodes.size():
 				cursor_nodes[idx].visible = false
+			if idx < row_panels.size():
+				row_panels[idx].add_theme_stylebox_override("panel", _row_style_idle)
 			if disabled_actions.has(item_id):
 				label.modulate = Color(0.6, 0.6, 0.6)
 			else:
@@ -201,6 +250,8 @@ func _update_selection() -> void:
 		idx += 1
 	
 	description_label.text = menu_items[current_selection_index].get("desc", "")
+	if action_list_scroll and current_selection_index < row_panels.size():
+		action_list_scroll.ensure_control_visible(row_panels[current_selection_index])
 
 func _input(event: InputEvent) -> void:
 	if not visible or current_state == MenuState.DISABLED:
@@ -260,3 +311,99 @@ func _block_input(ms: int) -> void:
 
 func _is_input_blocked() -> bool:
 	return Time.get_ticks_msec() < input_block_until_ms
+
+
+func _apply_skin() -> void:
+	_skin_cursor = _load_skin_tex("cursor_menu_arrow.png")
+	_row_style_idle = _build_skin_style(_load_skin_tex("menu_row_idle_9slice.png"), 2, 1)
+	_row_style_selected = _build_skin_style(_load_skin_tex("menu_row_selected_9slice.png"), 2, 1)
+	_ornament_tl = _load_skin_tex("ornament_corner_tl.png")
+	_ornament_tr = _load_skin_tex("ornament_corner_tr.png")
+	_ornament_bl = _load_skin_tex("ornament_corner_bl.png")
+	_ornament_br = _load_skin_tex("ornament_corner_br.png")
+
+	if command_panel:
+		command_panel.add_theme_stylebox_override("panel", _build_skin_style(_load_skin_tex("panel_command_9slice.png"), 6, 8))
+		_add_corner_ornaments(command_panel, "Command")
+	if description_panel:
+		description_panel.add_theme_stylebox_override("panel", _build_skin_style(_load_skin_tex("panel_description_9slice.png"), 6, 8))
+		_add_corner_ornaments(description_panel, "Description")
+	var divider_tex = _load_skin_tex("divider_h.png")
+	if name_separator and divider_tex:
+		name_separator.texture = divider_tex
+		name_separator.stretch_mode = TextureRect.STRETCH_SCALE
+		name_separator.modulate = Color(0.86, 0.8, 0.66, 0.45)
+	if action_list_node:
+		action_list_node.add_theme_constant_override("separation", 2)
+
+
+func _add_corner_ornaments(panel: Control, key: String) -> void:
+	if panel == null:
+		return
+	var suffixes := ["TL", "TR", "BL", "BR"]
+	var textures := [_ornament_tl, _ornament_tr, _ornament_bl, _ornament_br]
+	for i in range(suffixes.size()):
+		var node_name = "Ornament%s%s" % [key, suffixes[i]]
+		var existing = panel.get_node_or_null(node_name)
+		if existing:
+			existing.queue_free()
+		var tex = textures[i]
+		if tex == null:
+			continue
+		var ornament = TextureRect.new()
+		ornament.name = node_name
+		ornament.texture = tex
+		ornament.size = Vector2(12, 12)
+		ornament.custom_minimum_size = Vector2(12, 12)
+		ornament.stretch_mode = TextureRect.STRETCH_SCALE
+		ornament.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ornament.modulate = Color(0.84, 0.78, 0.65, 0.55)
+		ornament.z_index = 3
+		match i:
+			0:
+				ornament.position = Vector2(1, 1)
+			1:
+				ornament.anchor_left = 1.0
+				ornament.anchor_right = 1.0
+				ornament.position = Vector2(-13, 1)
+			2:
+				ornament.anchor_top = 1.0
+				ornament.anchor_bottom = 1.0
+				ornament.position = Vector2(1, -13)
+			3:
+				ornament.anchor_left = 1.0
+				ornament.anchor_right = 1.0
+				ornament.anchor_top = 1.0
+				ornament.anchor_bottom = 1.0
+				ornament.position = Vector2(-13, -13)
+		panel.add_child(ornament)
+
+
+func _load_skin_tex(file_name: String) -> Texture2D:
+	var path = SKIN_ROOT + file_name
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+
+func _build_skin_style(texture: Texture2D, margin: int = 8, content: int = 6) -> StyleBox:
+	if texture == null:
+		var fallback = StyleBoxFlat.new()
+		fallback.bg_color = Color(0.06, 0.09, 0.15, 0.86)
+		fallback.border_color = Color(0.66, 0.56, 0.36, 0.9)
+		fallback.border_width_left = 2
+		fallback.border_width_top = 2
+		fallback.border_width_right = 2
+		fallback.border_width_bottom = 2
+		return fallback
+	var style = StyleBoxTexture.new()
+	style.texture = texture
+	style.texture_margin_left = margin
+	style.texture_margin_top = margin
+	style.texture_margin_right = margin
+	style.texture_margin_bottom = margin
+	style.content_margin_left = content
+	style.content_margin_top = content
+	style.content_margin_right = content
+	style.content_margin_bottom = content
+	return style

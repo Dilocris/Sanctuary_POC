@@ -13,11 +13,13 @@ class_name ResourceDotGrid
 @export var empty_color: Color = Color(0.4, 0.4, 0.4, 0.8)
 @export var full_color: Color = Color(0.95, 0.85, 0.2)
 @export var outline_width: float = 1.0
+@export var full_texture: Texture2D
+@export var empty_texture: Texture2D
 
 # Internal state
 var _current_value: int = 0
-var _dots: Array[ColorRect] = []
-var _outlines: Array[ColorRect] = []
+var _dots: Array[CanvasItem] = []
+var _outlines: Array[CanvasItem] = []
 
 
 func _ready() -> void:
@@ -55,23 +57,44 @@ func _rebuild_grid() -> void:
 		var y = row * (dot_size + row_spacing)
 
 		# Outline (always visible)
-		var outline = ColorRect.new()
-		outline.color = empty_color
-		outline.position = Vector2(x, y)
-		outline.size = Vector2(dot_size, dot_size)
-		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(outline)
-		_outlines.append(outline)
+		if empty_texture:
+			var outline_tex = TextureRect.new()
+			outline_tex.texture = empty_texture
+			outline_tex.position = Vector2(x, y)
+			outline_tex.size = Vector2(dot_size, dot_size)
+			outline_tex.stretch_mode = TextureRect.STRETCH_SCALE
+			outline_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(outline_tex)
+			_outlines.append(outline_tex)
+		else:
+			var outline = ColorRect.new()
+			outline.color = empty_color
+			outline.position = Vector2(x, y)
+			outline.size = Vector2(dot_size, dot_size)
+			outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(outline)
+			_outlines.append(outline)
 
-		# Fill (inner, smaller)
-		var fill = ColorRect.new()
-		fill.color = full_color
-		fill.position = Vector2(x + outline_width, y + outline_width)
-		fill.size = Vector2(dot_size - outline_width * 2, dot_size - outline_width * 2)
-		fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		fill.visible = false  # Start hidden
-		add_child(fill)
-		_dots.append(fill)
+		# Fill (inner, smaller) or full-size textured pip.
+		if full_texture:
+			var fill_tex = TextureRect.new()
+			fill_tex.texture = full_texture
+			fill_tex.position = Vector2(x, y)
+			fill_tex.size = Vector2(dot_size, dot_size)
+			fill_tex.stretch_mode = TextureRect.STRETCH_SCALE
+			fill_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			fill_tex.visible = false
+			add_child(fill_tex)
+			_dots.append(fill_tex)
+		else:
+			var fill = ColorRect.new()
+			fill.color = full_color
+			fill.position = Vector2(x + outline_width, y + outline_width)
+			fill.size = Vector2(dot_size - outline_width * 2, dot_size - outline_width * 2)
+			fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			fill.visible = false
+			add_child(fill)
+			_dots.append(fill)
 
 	_update_display()
 

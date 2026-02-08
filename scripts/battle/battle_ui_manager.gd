@@ -6,6 +6,7 @@ class_name BattleUIManager
 
 const AnimatedHealthBarClass = preload("res://scripts/ui/animated_health_bar.gd")
 const ResourceDotGridClass = preload("res://scripts/ui/resource_dot_grid.gd")
+const UI_SKIN_ROOT := "res://assets/ui/battle_skin/"
 
 # Pixel font (loaded once, applied to UI elements)
 var _pixel_font: Font
@@ -24,6 +25,98 @@ func _apply_pixel_font(label: Label, bold: bool = false) -> void:
 	if f:
 		label.add_theme_font_override("font", f)
 
+
+func _load_skin() -> void:
+	_skin_panel_bottom = _load_skin_tex("panel_bottom_9slice.png")
+	_skin_panel_party = _load_skin_tex("panel_party_9slice.png")
+	_skin_top_turn = _load_skin_tex("top_turn_order_9slice.png")
+	_skin_top_status = _load_skin_tex("top_status_9slice.png")
+	_skin_turn_plaque = _load_skin_tex("turn_center_plaque_9slice.png")
+	_skin_menu_row_idle = _load_skin_tex("menu_row_idle_9slice.png")
+	_skin_menu_row_selected = _load_skin_tex("menu_row_selected_9slice.png")
+	_skin_lb_box = _load_skin_tex("lb_box_9slice.png")
+	_skin_bar_bg = _load_skin_tex("bar_bg_9slice.png")
+	_skin_pip_full = _load_skin_tex("pip_full.png")
+	_skin_pip_empty = _load_skin_tex("pip_empty.png")
+	_skin_divider_h = _load_skin_tex("divider_h.png")
+	_skin_divider_v = _load_skin_tex("divider_v.png")
+	_skin_ornament_tl = _load_skin_tex("ornament_corner_tl.png")
+	_skin_ornament_tr = _load_skin_tex("ornament_corner_tr.png")
+	_skin_ornament_bl = _load_skin_tex("ornament_corner_bl.png")
+	_skin_ornament_br = _load_skin_tex("ornament_corner_br.png")
+
+
+func _load_skin_tex(file_name: String) -> Texture2D:
+	var path = UI_SKIN_ROOT + file_name
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+
+func _make_skin_style(texture: Texture2D, margin: int = 8, content: int = 6, draw_center: bool = true) -> StyleBox:
+	if texture == null:
+		var fallback = StyleBoxFlat.new()
+		fallback.bg_color = Color(0.06, 0.09, 0.15, 0.88)
+		fallback.border_color = Color(0.66, 0.56, 0.36, 0.9)
+		fallback.border_width_left = 2
+		fallback.border_width_top = 2
+		fallback.border_width_right = 2
+		fallback.border_width_bottom = 2
+		return fallback
+	var style = StyleBoxTexture.new()
+	style.texture = texture
+	style.texture_margin_left = margin
+	style.texture_margin_top = margin
+	style.texture_margin_right = margin
+	style.texture_margin_bottom = margin
+	style.content_margin_left = content
+	style.content_margin_top = content
+	style.content_margin_right = content
+	style.content_margin_bottom = content
+	style.draw_center = draw_center
+	return style
+
+
+func _add_corner_ornaments(target: Control, prefix: String, tint: Color = Color(0.86, 0.8, 0.66, 0.5), ornament_size: int = 12) -> void:
+	if target == null:
+		return
+	var textures := [_skin_ornament_tl, _skin_ornament_tr, _skin_ornament_bl, _skin_ornament_br]
+	var suffixes := ["TL", "TR", "BL", "BR"]
+	for i in range(4):
+		var node_name = "SkinOrnament%s%s" % [prefix, suffixes[i]]
+		var existing = target.get_node_or_null(node_name)
+		if existing:
+			existing.queue_free()
+		if textures[i] == null:
+			continue
+		var ornament = TextureRect.new()
+		ornament.name = node_name
+		ornament.texture = textures[i]
+		ornament.stretch_mode = TextureRect.STRETCH_SCALE
+		ornament.size = Vector2(ornament_size, ornament_size)
+		ornament.custom_minimum_size = Vector2(ornament_size, ornament_size)
+		ornament.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ornament.modulate = tint
+		ornament.z_index = 5
+		match i:
+			0:
+				ornament.position = Vector2(1, 1)
+			1:
+				ornament.anchor_left = 1.0
+				ornament.anchor_right = 1.0
+				ornament.position = Vector2(float(-ornament_size - 1), 1)
+			2:
+				ornament.anchor_top = 1.0
+				ornament.anchor_bottom = 1.0
+				ornament.position = Vector2(1, float(-ornament_size - 1))
+			3:
+				ornament.anchor_left = 1.0
+				ornament.anchor_right = 1.0
+				ornament.anchor_top = 1.0
+				ornament.anchor_bottom = 1.0
+				ornament.position = Vector2(float(-ornament_size - 1), float(-ornament_size - 1))
+		target.add_child(ornament)
+
 signal phase_overlay_finished
 signal limit_overlay_finished
 
@@ -40,26 +133,24 @@ const ACTIVE_NAME_COLOR := Color(1.0, 0.9, 0.4)
 const INACTIVE_NAME_COLOR := Color(0.9, 0.9, 0.9)
 const ACTIVE_NAME_FONT_SIZE := 14
 const INACTIVE_NAME_FONT_SIZE := 13
-const HP_BAR_HEIGHT := 20
-const MP_BAR_HEIGHT := 14
-const BAR_WIDTH := 176
-const NAME_WIDTH := 78
+const HP_BAR_HEIGHT := 14
+const MP_BAR_HEIGHT := 10
+const BAR_WIDTH := 156
+const NAME_WIDTH := 80
 const MP_COLOR := Color(0.25, 0.45, 0.85)
 
 # Fixed column layout positions (within party panel inner area)
 const COL_NAME_X := 8
 const COL_SEP1_X := 90
 const COL_BARS_X := 96
-const COL_SEP2_X := 276
-const COL_RES_X := 282
-const COL_RES_W := 86
-const COL_SEP3_X := 372
-const COL_LB_X := 378
-const COL_LB_BAR_X := 398
-const COL_LB_BAR_W := 132
-const LB_BAR_HEIGHT := 16
+const COL_SEP2_X := 254
+const COL_RES_X := 260
+const COL_SEP3_X := 324
+const COL_LB_X := 330
+const COL_LB_VALUE_X := 348
+const LB_VALUE_BOX_W := 52
 const SEP_COLOR := Color(0.35, 0.35, 0.4, 0.4)
-const ROW_HEIGHT := 36
+const ROW_HEIGHT := 34
 const TOP_HUD_X := 24
 const TOP_HUD_W := 1104
 const ACRONYM_WORDS := {
@@ -106,12 +197,32 @@ var pending_damage_messages: Array = []
 var pending_status_messages: Array = []
 var enemy_intent_duration: float = 2.0
 
+# Skin textures
+var _skin_panel_bottom: Texture2D
+var _skin_panel_party: Texture2D
+var _skin_top_turn: Texture2D
+var _skin_top_status: Texture2D
+var _skin_turn_plaque: Texture2D
+var _skin_menu_row_idle: Texture2D
+var _skin_menu_row_selected: Texture2D
+var _skin_lb_box: Texture2D
+var _skin_bar_bg: Texture2D
+var _skin_pip_full: Texture2D
+var _skin_pip_empty: Texture2D
+var _skin_divider_h: Texture2D
+var _skin_divider_v: Texture2D
+var _skin_ornament_tl: Texture2D
+var _skin_ornament_tr: Texture2D
+var _skin_ornament_bl: Texture2D
+var _skin_ornament_br: Texture2D
+
 
 func setup(scene_root: Node, battle_manager: BattleManager, intent_duration: float = 2.0) -> void:
 	_scene_root = scene_root
 	_battle_manager = battle_manager
 	enemy_intent_duration = intent_duration
 	_load_pixel_fonts()
+	_load_skin()
 
 
 # ============================================================================
@@ -138,38 +249,43 @@ func create_debug_ui() -> void:
 
 
 func create_game_ui() -> void:
-	# Lower UI background - closer to bottom edge
-	var lower_ui_bg = ColorRect.new()
-	lower_ui_bg.color = Color(0, 0, 0, 0.7)
-	lower_ui_bg.position = Vector2(0, LOWER_UI_TOP - 8)
-	lower_ui_bg.size = Vector2(1152, 648 - LOWER_UI_TOP + 8)
-	lower_ui_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_scene_root.add_child(lower_ui_bg)
-
-	# Party Status Panel (Bottom Right) - tighter layout
 	var panel_height = 648 - LOWER_UI_TOP
+
+	# Bottom HUD shell (ornate skin).
+	var bottom_shell = Panel.new()
+	bottom_shell.position = Vector2(0, 466)
+	bottom_shell.size = Vector2(1152, 182)
+	bottom_shell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bottom_shell.add_theme_stylebox_override("panel", _make_skin_style(_skin_panel_bottom, 9, 10))
+	_scene_root.add_child(bottom_shell)
+	_add_corner_ornaments(bottom_shell, "BottomShell", Color(0.82, 0.76, 0.62, 0.44), 12)
+
+	# Party Status Panel (Bottom Right)
 	var panel_bg = Panel.new()
-	panel_bg.position = Vector2(580, LOWER_UI_TOP)
-	panel_bg.size = Vector2(560, panel_height)
+	panel_bg.position = Vector2(576, LOWER_UI_TOP - 2)
+	panel_bg.size = Vector2(568, panel_height + 2)
+	panel_bg.add_theme_stylebox_override("panel", _make_skin_style(_skin_panel_party, 6, 6))
 	_scene_root.add_child(panel_bg)
+	_add_corner_ornaments(panel_bg, "PartyPanel", Color(0.83, 0.77, 0.63, 0.46), 11)
 
 	party_status_panel = Control.new()
-	party_status_panel.position = Vector2(PANEL_PADDING, PANEL_PADDING)
+	party_status_panel.position = Vector2(PANEL_PADDING + 2, PANEL_PADDING + 2)
 	party_status_panel.size = Vector2(panel_bg.size.x - PANEL_PADDING * 2, panel_height - PANEL_PADDING * 2)
 	panel_bg.add_child(party_status_panel)
 
-	# Top HUD strip (improves legibility of turn order and statuses).
-	var top_hud_bg = ColorRect.new()
-	top_hud_bg.position = Vector2(0, 6)
-	top_hud_bg.size = Vector2(1152, 62)
-	top_hud_bg.color = Color(0, 0, 0, 0.42)
-	top_hud_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_scene_root.add_child(top_hud_bg)
+	# Top turn order panel.
+	var top_turn_panel = Panel.new()
+	top_turn_panel.position = Vector2(258, 6)
+	top_turn_panel.size = Vector2(636, 34)
+	top_turn_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_turn_panel.add_theme_stylebox_override("panel", _make_skin_style(_skin_top_turn, 12, 10))
+	_scene_root.add_child(top_turn_panel)
+	_add_corner_ornaments(top_turn_panel, "TopTurn", Color(0.9, 0.84, 0.7, 0.58), 10)
 
-	# Turn Order Display (Top Center)
+	# Turn order text.
 	turn_order_display = Label.new()
-	turn_order_display.position = Vector2(TOP_HUD_X, 10)
-	turn_order_display.size = Vector2(TOP_HUD_W, 22)
+	turn_order_display.position = Vector2(12, 6)
+	turn_order_display.size = Vector2(top_turn_panel.size.x - 24, 22)
 	turn_order_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	turn_order_display.add_theme_font_size_override("font_size", 13)
 	turn_order_display.add_theme_color_override("font_color", Color(0.96, 0.94, 0.85))
@@ -177,41 +293,52 @@ func create_game_ui() -> void:
 	turn_order_display.add_theme_constant_override("outline_size", 2)
 	turn_order_display.clip_text = true
 	_apply_pixel_font(turn_order_display)
-	_scene_root.add_child(turn_order_display)
+	top_turn_panel.add_child(turn_order_display)
 
-	# Status Effects Display (Centered below Turn Order)
+	# Top status panel.
+	var top_status_panel = Panel.new()
+	top_status_panel.position = Vector2(332, 39)
+	top_status_panel.size = Vector2(488, 28)
+	top_status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_status_panel.add_theme_stylebox_override("panel", _make_skin_style(_skin_top_status, 10, 7))
+	_scene_root.add_child(top_status_panel)
+	_add_corner_ornaments(top_status_panel, "TopStatus", Color(0.9, 0.84, 0.7, 0.56), 9)
+
+	# Status text.
 	status_effects_display = Label.new()
-	status_effects_display.position = Vector2(TOP_HUD_X, 32)
-	status_effects_display.size = Vector2(TOP_HUD_W, 24)
+	status_effects_display.position = Vector2(10, 3)
+	status_effects_display.size = Vector2(top_status_panel.size.x - 20, 22)
 	status_effects_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_effects_display.add_theme_font_size_override("font_size", 12)
-	status_effects_display.add_theme_color_override("font_color", Color(0.78, 0.9, 1.0))
+	status_effects_display.add_theme_color_override("font_color", Color(0.88, 0.9, 0.95))
 	status_effects_display.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	status_effects_display.add_theme_constant_override("outline_size", 2)
 	status_effects_display.clip_text = true
 	_apply_pixel_font(status_effects_display)
-	_scene_root.add_child(status_effects_display)
+	top_status_panel.add_child(status_effects_display)
 
-	# Combat Log Toast (Above Bottom UI)
+	# Center turn plaque.
+	var turn_plaque_panel = Panel.new()
+	turn_plaque_panel.position = Vector2(432, 454)
+	turn_plaque_panel.size = Vector2(288, 34)
+	turn_plaque_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	turn_plaque_panel.add_theme_stylebox_override("panel", _make_skin_style(_skin_turn_plaque, 14, 9))
+	_scene_root.add_child(turn_plaque_panel)
+	_add_corner_ornaments(turn_plaque_panel, "TurnPlaque", Color(0.9, 0.84, 0.7, 0.58), 10)
+
+	# Combat log toast text on turn plaque.
 	combat_log_display = Label.new()
-	combat_log_display.position = Vector2(180, 456)
-	combat_log_display.size = Vector2(792, 34)
+	combat_log_display.position = Vector2(10, 6)
+	combat_log_display.size = Vector2(268, 22)
 	combat_log_display.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	combat_log_display.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	combat_log_display.text = "Battle Start!"
-	combat_log_display.add_theme_font_size_override("font_size", 14)
+	combat_log_display.text = "PLAYER TURN"
+	combat_log_display.add_theme_font_size_override("font_size", 13)
 	combat_log_display.add_theme_color_override("font_color", Color(1.0, 0.95, 0.75))
 	combat_log_display.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-	combat_log_display.add_theme_constant_override("outline_size", 3)
+	combat_log_display.add_theme_constant_override("outline_size", 2)
 	_apply_pixel_font(combat_log_display)
-
-	var bg = ColorRect.new()
-	bg.show_behind_parent = true
-	bg.color = Color(0, 0, 0, 0.66)
-	bg.anchor_right = 1.0
-	bg.anchor_bottom = 1.0
-	combat_log_display.add_child(bg)
-	_scene_root.add_child(combat_log_display)
+	turn_plaque_panel.add_child(combat_log_display)
 
 	# Enemy Intent (Top Center)
 	enemy_intent_label = Label.new()
@@ -281,11 +408,11 @@ func create_game_ui() -> void:
 	# F1 hint
 	f1_hint_label = Label.new()
 	f1_hint_label.text = "F1: SETTINGS"
-	f1_hint_label.position = Vector2(1000, 626)
+	f1_hint_label.position = Vector2(1008, 626)
 	f1_hint_label.size = Vector2(144, 20)
 	f1_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	f1_hint_label.add_theme_font_size_override("font_size", 11)
-	f1_hint_label.add_theme_color_override("font_color", Color(0.86, 0.86, 0.86, 0.9))
+	f1_hint_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 0.85))
 	f1_hint_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	f1_hint_label.add_theme_constant_override("outline_size", 2)
 	_apply_pixel_font(f1_hint_label)
@@ -377,23 +504,14 @@ func update_party_status(apply_name_style_func: Callable) -> void:
 			var res_val = _get_actor_resource_current(actor)
 			grid.set_value(res_val)
 
-		# Update LB bar + flash effect
-		if _party_lb_bars.has(actor_id):
-			_party_lb_bars[actor_id].value = actor.limit_gauge
-			if _party_lb_texts.has(actor_id):
-				if actor.limit_gauge >= 100:
-					_party_lb_texts[actor_id].text = "READY"
-					_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.95, 1.0, 1.0))
-				else:
-					_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
-					_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
-			if _party_lb_fills.has(actor_id):
-				if actor.limit_gauge >= 100:
-					_party_lb_fills[actor_id].bg_color = Color(0.2, 0.6, 1.0)
-					_start_lb_pulse(actor_id)
-				else:
-					_party_lb_fills[actor_id].bg_color = Color(0.4, 0.4, 0.4)
-					_stop_lb_pulse(actor_id)
+		# Update LB value box text.
+		if _party_lb_texts.has(actor_id):
+			if actor.limit_gauge >= 100:
+				_party_lb_texts[actor_id].text = "READY"
+				_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.95, 1.0, 1.0))
+			else:
+				_party_lb_texts[actor_id].text = "%d%%" % actor.limit_gauge
+				_party_lb_texts[actor_id].add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
 
 
 ## Get the current value of an actor's special resource.
@@ -428,6 +546,15 @@ func _create_party_ui() -> void:
 	# Clear any existing children
 	for child in party_status_panel.get_children():
 		child.queue_free()
+	_party_hp_bars.clear()
+	_party_mp_bars.clear()
+	_party_name_labels.clear()
+	_party_resource_grids.clear()
+	_party_lb_bars.clear()
+	_party_lb_texts.clear()
+	_party_lb_fills.clear()
+	_party_lb_tweens.clear()
+	_party_row_highlights.clear()
 
 	var active_id = _battle_manager.battle_state.get("active_character_id", "")
 
@@ -435,34 +562,61 @@ func _create_party_ui() -> void:
 	var panel_h = party_status_panel.size.y
 	var panel_w = party_status_panel.size.x
 	for sep_x in [COL_SEP1_X, COL_SEP2_X, COL_SEP3_X]:
-		var sep = ColorRect.new()
-		sep.color = SEP_COLOR
-		sep.position = Vector2(sep_x, 0)
-		sep.size = Vector2(1, panel_h)
-		sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		party_status_panel.add_child(sep)
+		if _skin_divider_v:
+			var sep_tex = TextureRect.new()
+			sep_tex.texture = _skin_divider_v
+			sep_tex.position = Vector2(sep_x, 0)
+			sep_tex.size = Vector2(1, panel_h)
+			sep_tex.stretch_mode = TextureRect.STRETCH_SCALE
+			sep_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			sep_tex.modulate = Color(0.88, 0.82, 0.66, 0.2)
+			party_status_panel.add_child(sep_tex)
+		else:
+			var sep = ColorRect.new()
+			sep.color = SEP_COLOR
+			sep.position = Vector2(sep_x, 0)
+			sep.size = Vector2(1, panel_h)
+			sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			party_status_panel.add_child(sep)
 
 	# Draw row separators between character lines
 	var party_size = _battle_manager.battle_state.party.size()
 	for i in range(1, party_size):
-		var row_sep = ColorRect.new()
-		row_sep.color = SEP_COLOR
-		row_sep.position = Vector2(0, i * ROW_HEIGHT)
-		row_sep.size = Vector2(panel_w, 1)
-		row_sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		party_status_panel.add_child(row_sep)
+		if _skin_divider_h:
+			var row_sep_tex = TextureRect.new()
+			row_sep_tex.texture = _skin_divider_h
+			row_sep_tex.position = Vector2(0, i * ROW_HEIGHT)
+			row_sep_tex.size = Vector2(panel_w, 1)
+			row_sep_tex.stretch_mode = TextureRect.STRETCH_SCALE
+			row_sep_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row_sep_tex.modulate = Color(0.88, 0.82, 0.66, 0.2)
+			party_status_panel.add_child(row_sep_tex)
+		else:
+			var row_sep = ColorRect.new()
+			row_sep.color = SEP_COLOR
+			row_sep.position = Vector2(0, i * ROW_HEIGHT)
+			row_sep.size = Vector2(panel_w, 1)
+			row_sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			party_status_panel.add_child(row_sep)
 
 	var row_idx := 0
 	for actor in _battle_manager.battle_state.party:
 		var actor_id = actor.id
 		var row_y = row_idx * ROW_HEIGHT
 
-		# --- Row highlight background (subtle tint for active character) ---
+		# --- Row shading ---
+		var row_base = ColorRect.new()
+		row_base.position = Vector2(0, row_y)
+		row_base.size = Vector2(panel_w, ROW_HEIGHT)
+		row_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row_base.color = Color(0.02, 0.05, 0.09, 0.28)
+		party_status_panel.add_child(row_base)
+
 		var row_bg = ColorRect.new()
-		row_bg.color = Color(1.0, 0.9, 0.4, 0.08)
 		row_bg.position = Vector2(0, row_y)
 		row_bg.size = Vector2(panel_w, ROW_HEIGHT)
 		row_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row_bg.color = Color(0.55, 0.45, 0.18, 0.1)
 		row_bg.visible = actor_id == active_id
 		_party_row_highlights[actor_id] = row_bg
 		party_status_panel.add_child(row_bg)
@@ -485,9 +639,15 @@ func _create_party_ui() -> void:
 		hp_bar.bar_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
 		hp_bar.custom_minimum_size = Vector2(BAR_WIDTH, HP_BAR_HEIGHT)
 		hp_bar.use_odometer = false
-		hp_bar.corner_radius = 3
-		hp_bar.custom_font = _pixel_font
-		hp_bar.position = Vector2(COL_BARS_X, row_y)
+		hp_bar.corner_radius = 2
+		hp_bar.custom_font = _pixel_font_bold if _pixel_font_bold else _pixel_font
+		hp_bar.static_text_font_size = 11
+		hp_bar.static_text_outline_size = 2
+		hp_bar.static_text_vertical_offset = -1
+		hp_bar.background_color = Color(0.09, 0.12, 0.17, 0.96)
+		var bars_total_h = HP_BAR_HEIGHT + MP_BAR_HEIGHT + 2
+		var bars_start_y = row_y + int((ROW_HEIGHT - bars_total_h) / 2)
+		hp_bar.position = Vector2(COL_BARS_X, bars_start_y)
 		_party_hp_bars[actor_id] = hp_bar
 		party_status_panel.add_child(hp_bar)
 
@@ -499,74 +659,63 @@ func _create_party_ui() -> void:
 			mp_bar.use_odometer = false
 			mp_bar.corner_radius = 2
 			mp_bar.custom_font = _pixel_font
-			mp_bar.position = Vector2(COL_BARS_X, row_y + HP_BAR_HEIGHT + 1)
+			mp_bar.static_text_font_size = 9
+			mp_bar.static_text_outline_size = 1
+			mp_bar.static_text_vertical_offset = -1
+			mp_bar.background_color = Color(0.08, 0.1, 0.16, 0.95)
+			mp_bar.position = Vector2(COL_BARS_X, bars_start_y + HP_BAR_HEIGHT + 2)
 			_party_mp_bars[actor_id] = mp_bar
 			party_status_panel.add_child(mp_bar)
 
-		# --- Resource dot grid (fixed column, 2 rows x 8 cols) ---
+		# --- Resource dot grid (compact fixed column to avoid heavy footprint) ---
 		var res_max = _get_actor_resource_max(actor)
 		if res_max > 0:
 			var res_grid = ResourceDotGridClass.new()
 			res_grid.max_value = res_max
-			res_grid.fixed_columns = 8
-			res_grid.dot_size = 9
+			res_grid.fixed_columns = 4
+			res_grid.dot_size = 8
 			res_grid.dot_spacing = 2
-			res_grid.row_spacing = 2
-			var grid_h = 2 * 9 + 1 * 2
+			res_grid.row_spacing = 1
+			res_grid.full_texture = _skin_pip_full
+			res_grid.empty_texture = _skin_pip_empty
+			var grid_h = 2 * res_grid.dot_size + res_grid.row_spacing
 			res_grid.position = Vector2(COL_RES_X, row_y + int((ROW_HEIGHT - grid_h) / 2))
 			_party_resource_grids[actor_id] = res_grid
 			party_status_panel.add_child(res_grid)
 
-		# --- LB section (fixed column, all aligned) ---
+		# --- LB section (label + value box, matching the lighter reference) ---
 		var lb_label = Label.new()
 		lb_label.text = "LB"
 		lb_label.add_theme_font_size_override("font_size", 10)
-		lb_label.add_theme_color_override("font_color", Color(0.72, 0.8, 0.95))
+		lb_label.add_theme_color_override("font_color", Color(0.72, 0.78, 0.9))
+		lb_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		lb_label.add_theme_constant_override("outline_size", 1)
 		lb_label.position = Vector2(COL_LB_X, row_y)
 		lb_label.size = Vector2(20, ROW_HEIGHT)
 		lb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		_apply_pixel_font(lb_label)
 		party_status_panel.add_child(lb_label)
 
-		var lb_bar = ProgressBar.new()
-		lb_bar.min_value = 0
-		lb_bar.max_value = 100
-		lb_bar.value = actor.limit_gauge
-		lb_bar.position = Vector2(COL_LB_BAR_X, row_y + int((ROW_HEIGHT - LB_BAR_HEIGHT) / 2))
-		lb_bar.size = Vector2(COL_LB_BAR_W, LB_BAR_HEIGHT)
-		lb_bar.custom_minimum_size = Vector2(COL_LB_BAR_W, LB_BAR_HEIGHT)
-		lb_bar.show_percentage = false
-
-		var lb_bg = StyleBoxFlat.new()
-		lb_bg.bg_color = Color(0.15, 0.15, 0.15, 0.9)
-		lb_bg.set_corner_radius_all(4)
-
-		var lb_fill = StyleBoxFlat.new()
-		lb_fill.bg_color = Color(0.4, 0.4, 0.4)
-		if actor.limit_gauge >= 100:
-			lb_fill.bg_color = Color(0.2, 0.6, 1.0)
-		lb_fill.set_corner_radius_all(4)
-
-		lb_bar.add_theme_stylebox_override("background", lb_bg)
-		lb_bar.add_theme_stylebox_override("fill", lb_fill)
-		lb_bar.add_theme_stylebox_override("fg", lb_fill)
-		_party_lb_bars[actor_id] = lb_bar
-		_party_lb_fills[actor_id] = lb_fill
+		var lb_box = Panel.new()
+		lb_box.position = Vector2(COL_LB_VALUE_X, row_y + int((ROW_HEIGHT - 18) / 2))
+		lb_box.size = Vector2(LB_VALUE_BOX_W, 18)
+		lb_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lb_box.add_theme_stylebox_override("panel", _make_skin_style(_skin_lb_box, 5, 2))
+		party_status_panel.add_child(lb_box)
 
 		var lb_text = Label.new()
 		lb_text.text = "READY" if actor.limit_gauge >= 100 else "%d%%" % actor.limit_gauge
-		lb_text.add_theme_font_size_override("font_size", 12)
+		lb_text.add_theme_font_size_override("font_size", 11)
 		lb_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lb_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lb_text.add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
 		lb_text.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-		lb_text.add_theme_constant_override("outline_size", 2)
+		lb_text.add_theme_constant_override("outline_size", 1)
 		lb_text.set_anchors_preset(Control.PRESET_FULL_RECT)
 		_apply_pixel_font(lb_text)
-		lb_bar.add_child(lb_text)
+		lb_box.add_child(lb_text)
 		_party_lb_texts[actor_id] = lb_text
 
-		party_status_panel.add_child(lb_bar)
 		row_idx += 1
 
 	# Initialize all bars with current values (no animation on first display)

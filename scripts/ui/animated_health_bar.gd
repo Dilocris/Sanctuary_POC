@@ -18,6 +18,10 @@ const OdometerLabelClass = preload("res://scripts/ui/odometer_label.gd")
 @export var use_odometer: bool = true      # Rolling digit display for HP numbers
 @export var low_hp_threshold: float = 0.25 # Fraction of max HP to trigger warning
 @export var low_hp_color: Color = Color(0.85, 0.2, 0.2)
+@export var static_text_font_size: int = 0
+@export var static_text_outline_size: int = -1
+@export var static_text_vertical_offset: int = 0
+@export var static_text_color: Color = Color(0.97, 0.97, 0.97)
 var custom_font: Font                  # Optional pixel font for HP text
 
 # State machine
@@ -37,7 +41,7 @@ var _heartbeat_tween: Tween
 # Node references
 var _yellow_bar: ProgressBar
 var _main_bar: ProgressBar
-var _hp_text: RichTextLabel          # Fallback static text
+var _hp_text: Label                  # Fallback static text
 var _hp_odometer: Control            # OdometerLabel for current HP
 var _hp_separator: Label             # "/" separator
 var _hp_max_label: Label             # Static max HP label
@@ -116,20 +120,20 @@ func _create_bars() -> void:
 
 
 func _create_static_text() -> void:
-	_hp_text = RichTextLabel.new()
-	_hp_text.bbcode_enabled = true
-	_hp_text.scroll_active = false
-	_hp_text.fit_content = false
-	var text_font_size = mini(int(bar_size.y) - 1, 14)
-	_hp_text.add_theme_font_size_override("normal_font_size", text_font_size)
-	_hp_text.add_theme_font_size_override("bold_font_size", text_font_size)
+	_hp_text = Label.new()
+	var text_font_size = static_text_font_size if static_text_font_size > 0 else clampi(int(bar_size.y) - 2, 9, 14)
+	_hp_text.add_theme_font_size_override("font_size", text_font_size)
+	_hp_text.add_theme_color_override("font_color", static_text_color)
+	_hp_text.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	var outline = static_text_outline_size if static_text_outline_size >= 0 else (1 if text_font_size <= 10 else 2)
+	_hp_text.add_theme_constant_override("outline_size", outline)
 	if custom_font:
-		_hp_text.add_theme_font_override("normal_font", custom_font)
-		_hp_text.add_theme_font_override("bold_font", custom_font)
+		_hp_text.add_theme_font_override("font", custom_font)
 	_hp_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hp_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hp_text.clip_text = true
 	# Use explicit size instead of anchors
-	_hp_text.position = Vector2.ZERO
+	_hp_text.position = Vector2(0, static_text_vertical_offset)
 	_hp_text.size = bar_size
 	_hp_text.z_index = 1
 	add_child(_hp_text)
@@ -292,8 +296,7 @@ func _update_text(animate: bool = true) -> void:
 		if _hp_max_label:
 			_hp_max_label.text = str(_max_hp)
 	elif _hp_text:
-		var small_size = maxi(8, mini(int(bar_size.y) - 3, 12))
-		_hp_text.text = "[b]%d[/b][font_size=%d]/%d[/font_size]" % [_current_hp, small_size, _max_hp]
+		_hp_text.text = "%d/%d" % [_current_hp, _max_hp]
 
 
 ## Check if HP has crossed the low-HP threshold and update visuals.
