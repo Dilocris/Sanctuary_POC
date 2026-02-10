@@ -8,8 +8,8 @@ SUPERSEDED_BY: None
 LLM USAGE INSTRUCTIONS:
 - This is the MASTER DESIGN DOCUMENT. Use as reference for intended behavior.
 - WARNING: Implementation may diverge from this doc in some areas.
-- Known divergences documented in docs/DOCUMENTATION_CONFLICTS.md.
-- For current implementation status, see docs/AGENT_SWAP.md.
+- For current implementation status, see docs/STATUS.md and docs/AGENT_SWAP.md.
+- For historical divergence notes, see docs/archive/legacy/DOCUMENTATION_CONFLICTS_2026-02-04.md.
 
 QUICK REFERENCE (by section number):
 - Turn system: Section 2.1

@@ -48,6 +48,15 @@ var pending_enemy_action: Dictionary = {}
 var input_locked: bool = false
 var current_pending_action_id = ""
 var current_pending_target_mode: String = "SINGLE"
+var action_resolution_id: int = 0
+var last_turn_loop_resolution_id: int = -1
+var enemy_intent_telegraphed: bool = false
+var limit_cinematic_active: bool = false
+var limit_cinematic_action_id: String = ""
+var feedback_toast_queue: Array = []
+var feedback_toast_running: bool = false
+var feedback_toast_sequence: int = 0
+var reaction_feedback_recent: Dictionary = {}
 const LOWER_UI_TOP := 492
 @export var enemy_intent_duration := 2.0
 
@@ -67,6 +76,38 @@ const BOSS_DATA_PATHS := [
 	"res://data/actors/marcus_gelt.tres"
 ]
 const DIFFICULTY_ORDER := ["Story", "Normal", "Hard"]
+const ACTION_TERMINAL_SUCCESS := "success"
+const ACTION_TERMINAL_FAILED_RETRY := "failed-retry"
+const ACTION_TERMINAL_FAILED_ADVANCE := "failed-advance"
+const ACTION_TERMINAL_BATTLE_END := "battle-end"
+const ACTION_TIMELINE_PROFILE_SINGLE := "single"
+const ACTION_TIMELINE_PROFILE_MULTI := "multi"
+const ACTION_TIMELINE_PROFILE_LIMIT := "limit"
+const ACTION_TIMELINE_INTENT_PLAYER_SEC := 0.35
+const ACTION_TIMELINE_INTENT_ENEMY_SEC := 0.20
+const ACTION_TIMELINE_COMMIT_SEC := 0.25
+const ACTION_TIMELINE_IMPACT_SINGLE_SEC := 1.35
+const ACTION_TIMELINE_IMPACT_MULTI_SEC := 2.10
+const ACTION_TIMELINE_IMPACT_LIMIT_SEC := 1.40
+const ACTION_TIMELINE_SETTLE_SINGLE_SEC := 0.35
+const ACTION_TIMELINE_SETTLE_MULTI_SEC := 0.50
+const ACTION_TIMELINE_SETTLE_LIMIT_SEC := 0.70
+const ACTION_TIMELINE_SINGLE_MIN_SEC := 2.50
+const ACTION_TIMELINE_SINGLE_MAX_SEC := 4.00
+const ACTION_TIMELINE_MULTI_MIN_SEC := 3.50
+const ACTION_TIMELINE_MULTI_MAX_SEC := 5.00
+const ACTION_TIMELINE_LIMIT_MIN_SEC := 4.50
+const ACTION_TIMELINE_LIMIT_MAX_SEC := 6.00
+const ACTION_TIMELINE_LIMIT_PRE_IMPACT_SEC := 2.30
+const ENEMY_INTENT_TELEGRAPH_MIN_SEC := 0.75
+const ENEMY_INTENT_TELEGRAPH_MAX_SEC := 1.15
+const FEEDBACK_PRIORITY_HIGH := 3
+const FEEDBACK_PRIORITY_MEDIUM := 2
+const FEEDBACK_PRIORITY_LOW := 1
+const FEEDBACK_TOAST_HIGH_SEC := 2.7
+const FEEDBACK_TOAST_MEDIUM_SEC := 2.0
+const FEEDBACK_TOAST_LOW_SEC := 1.35
+const REACTION_FEEDBACK_DEDUP_MS := 180
 const DIFFICULTY_DESCRIPTIONS := {
 	"Story": "Easier battles. Party HP/ATK up, weaker enemies, reduced rewards.",
 	"Normal": "Baseline tuning with standard rewards.",
@@ -274,6 +315,10 @@ func _ready() -> void:
 	# Register attack spritesheets
 	for actor_id in renderer.ATTACK_SPRITESHEETS.keys():
 		animation_controller.register_attack_spritesheet(actor_id, renderer.ATTACK_SPRITESHEETS[actor_id])
+		var attack_validation = animation_controller.get_attack_config_validation(actor_id)
+		if not bool(_dict_get(attack_validation, "ok", false)):
+			var issues: Array = _dict_get(attack_validation, "issues", [])
+			push_warning("Attack animation config warning for " + actor_id + ": " + " | ".join(issues))
 
 	await _prompt_for_difficulty_selection()
 	battle_manager.setup_state(party, enemies, battle_difficulty)
@@ -442,8 +487,65 @@ func _on_message_added(text: String) -> void:
 	if combat_log_display:
 		combat_log_display.text = text
 	if ui_manager and _is_priority_combat_message(text):
-		ui_manager.show_combat_log_toast(text)
+		_enqueue_feedback_toast(text)
 	_update_battle_log()
+
+
+func _enqueue_feedback_toast(text: String) -> void:
+	var priority = _feedback_toast_priority(text)
+	feedback_toast_queue.append({
+		"text": text,
+		"priority": priority,
+		"seq": feedback_toast_sequence
+	})
+	feedback_toast_sequence += 1
+	if not feedback_toast_running:
+		_process_feedback_toast_queue()
+
+
+func _process_feedback_toast_queue() -> void:
+	if feedback_toast_running:
+		return
+	feedback_toast_running = true
+	while not feedback_toast_queue.is_empty():
+		feedback_toast_queue.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var a_priority = int(a.get("priority", FEEDBACK_PRIORITY_LOW))
+			var b_priority = int(b.get("priority", FEEDBACK_PRIORITY_LOW))
+			if a_priority == b_priority:
+				return int(a.get("seq", 0)) < int(b.get("seq", 0))
+			return a_priority > b_priority
+		)
+		var entry: Dictionary = feedback_toast_queue.pop_front()
+		var msg = str(entry.get("text", ""))
+		var prio = int(entry.get("priority", FEEDBACK_PRIORITY_LOW))
+		if msg != "":
+			ui_manager.show_combat_log_toast(msg)
+		await get_tree().create_timer(_feedback_toast_duration(prio)).timeout
+	feedback_toast_running = false
+
+
+func _feedback_toast_priority(text: String) -> int:
+	if text.begins_with("State ->"):
+		return FEEDBACK_PRIORITY_HIGH
+	if text.begins_with("Timeline ->"):
+		return FEEDBACK_PRIORITY_HIGH
+	if text.begins_with("REACTION:"):
+		return FEEDBACK_PRIORITY_HIGH
+	if text.findn("phase") != -1:
+		return FEEDBACK_PRIORITY_HIGH
+	if text.findn("limit") != -1:
+		return FEEDBACK_PRIORITY_MEDIUM
+	return FEEDBACK_PRIORITY_LOW
+
+
+func _feedback_toast_duration(priority: int) -> float:
+	match priority:
+		FEEDBACK_PRIORITY_HIGH:
+			return FEEDBACK_TOAST_HIGH_SEC
+		FEEDBACK_PRIORITY_MEDIUM:
+			return FEEDBACK_TOAST_MEDIUM_SEC
+		_:
+			return FEEDBACK_TOAST_LOW_SEC
 
 func _on_turn_order_updated(order: Array) -> void:
 	var _order = order
@@ -477,9 +579,11 @@ func _on_action_enqueued(_action: Dictionary) -> void:
 
 func _on_action_executed(result: Dictionary) -> void:
 	var action_id = _dict_get(result, "action_id", "")
-	if action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]:
-		_show_limit_overlay(action_id)
-		game_feel_controller.on_limit_break()
+	if _is_limit_action(action_id):
+		var handled_by_cinematic = limit_cinematic_active and limit_cinematic_action_id == action_id
+		if not handled_by_cinematic:
+			_show_limit_overlay(action_id)
+			game_feel_controller.on_limit_break()
 
 	# Spawn Floating Text based on result
 	if result.get("ok"):
@@ -510,21 +614,22 @@ func _on_reaction_executed(payload: Dictionary) -> void:
 	var actor_id = _dict_get(payload, "actor_id", "")
 	var target_id = _dict_get(payload, "target_id", "")
 	var damage = int(_dict_get(payload, "damage", 0))
-	if reaction_id == "riposte":
-		if actor_id != "":
-			_play_action_whip(actor_id)
-		if target_id != "" and damage > 0:
-			var components = _dict_get(payload, "damage_components", [])
-			var rendered_components := 0
-			if components is Array and not components.is_empty():
-				rendered_components = animation_controller.spawn_damage_components(target_id, components)
-			if rendered_components <= 0:
-				_spawn_damage_numbers(target_id, [damage])
-			_play_hit_shake(target_id)
-			var target_sprite = actor_sprites.get(target_id, null)
-			game_feel_controller.on_damage_dealt(damage, target_sprite)
-		elif target_id != "" and damage <= 0:
-			_spawn_miss_text(target_id)
+	if _should_skip_reaction_feedback(reaction_id, actor_id, target_id, damage):
+		return
+	if actor_id != "":
+		_play_action_whip(actor_id)
+	if target_id != "" and damage > 0:
+		var components = _dict_get(payload, "damage_components", [])
+		var rendered_components := 0
+		if components is Array and not components.is_empty():
+			rendered_components = animation_controller.spawn_damage_components(target_id, components)
+		if rendered_components <= 0:
+			_spawn_damage_numbers(target_id, [damage])
+		_play_hit_shake(target_id)
+		var target_sprite = actor_sprites.get(target_id, null)
+		game_feel_controller.on_damage_dealt(damage, target_sprite)
+	elif target_id != "" and damage <= 0:
+		_spawn_miss_text(target_id)
 
 
 ## Show damage numbers, healing text, and status effects for an action payload.
@@ -688,6 +793,25 @@ func _show_limit_overlay(action_id: String) -> void:
 	ui_manager.show_limit_overlay(action_id)
 
 
+func _is_limit_action(action_id: String) -> bool:
+	return action_id in [ActionIds.KAI_LIMIT, ActionIds.LUD_LIMIT, ActionIds.NINOS_LIMIT, ActionIds.CAT_LIMIT]
+
+
+func _should_skip_reaction_feedback(reaction_id: String, actor_id: String, target_id: String, damage: int) -> bool:
+	var key = reaction_id + "|" + actor_id + "|" + target_id + "|" + str(damage)
+	var now_ms = Time.get_ticks_msec()
+	var stale_before = now_ms - (REACTION_FEEDBACK_DEDUP_MS * 12)
+	for existing_key in reaction_feedback_recent.keys():
+		if int(reaction_feedback_recent[existing_key]) < stale_before:
+			reaction_feedback_recent.erase(existing_key)
+	if reaction_feedback_recent.has(key):
+		var elapsed = now_ms - int(reaction_feedback_recent[key])
+		if elapsed <= REACTION_FEEDBACK_DEDUP_MS:
+			return true
+	reaction_feedback_recent[key] = now_ms
+	return false
+
+
 
 
 
@@ -804,7 +928,8 @@ func _telegraph_enemy_intent(actor: Boss) -> Signal:
 	pending_enemy_action = ai_action
 	var text = battle_manager.format_action_declaration(actor.id, ai_action)
 	_show_enemy_intent(text)
-	return get_tree().create_timer(enemy_intent_duration).timeout
+	enemy_intent_telegraphed = true
+	return get_tree().create_timer(_get_enemy_intent_stage_duration()).timeout
 
 func _show_enemy_intent(text: String) -> void:
 	ui_manager.show_enemy_intent(text)
@@ -1000,36 +1125,205 @@ func _update_menu_disables(actor: Character) -> void:
 	battle_menu.set_disabled_actions(disabled)
 
 func _execute_next_action() -> void:
+	action_resolution_id += 1
+	var resolution_id = action_resolution_id
+	var queued_action = _peek_next_action()
+	var queued_action_id = str(_dict_get(queued_action, "action_id", ""))
+	var profile = _determine_timeline_profile({}, queued_action)
+	var timeline_started_at_ms = Time.get_ticks_msec()
+	await _run_action_timeline_intent_stage(queued_action)
 	battle_manager.advance_state(BattleManager.BattleState.ACTION_RESOLVE)
+	await _run_action_timeline_commit_stage(queued_action)
+	if profile == ACTION_TIMELINE_PROFILE_LIMIT:
+		await _run_limit_break_cinematic_intro(queued_action)
 	var result = battle_manager.process_next_action()
 	var payload = _dict_get(result, "payload", result)
 	message_log("Action Result: " + str(payload))
-	if _dict_get(result, "ok", false) == false:
-		var err = str(_dict_get(result, "error", "action_failed"))
-		message_log("Action failed: " + err)
-		input_locked = false
-		target_cursor.deactivate()
-		# Best UX: failed player actions should not consume the turn.
-		if _is_party_member(active_player_id):
-			var failed_actor = battle_manager.get_actor_by_id(active_player_id)
-			if failed_actor != null and not failed_actor.is_ko():
-				battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
-				battle_menu.set_enabled(true)
-				battle_menu.setup(failed_actor)
-				_update_menu_disables(failed_actor)
-				return
-		# Fallback for non-player turns: advance to avoid deadlock.
-		battle_manager.advance_state(BattleManager.BattleState.TURN_END)
-		var prev_turn_count = battle_manager.battle_state.turn_count
-		battle_manager.advance_turn()
-		await get_tree().create_timer(0.9).timeout
-		if battle_manager.battle_state.turn_count > prev_turn_count:
-			battle_manager.advance_state(BattleManager.BattleState.ROUND_END)
-			battle_manager.advance_state(BattleManager.BattleState.ROUND_INIT)
+	if _dict_get(result, "ok", false):
+		profile = _determine_timeline_profile(payload, queued_action)
+		await _run_action_timeline_impact_stage(queued_action, payload, profile)
+		await _run_action_timeline_settle_stage(queued_action, profile)
+		await _enforce_action_timeline_bounds(profile, timeline_started_at_ms, queued_action)
+	var terminal = _determine_action_terminal(result)
+	await _dispatch_action_terminal(terminal, result, payload, resolution_id)
+	if limit_cinematic_active and limit_cinematic_action_id == queued_action_id:
+		limit_cinematic_active = false
+		limit_cinematic_action_id = ""
+
+
+func _peek_next_action() -> Dictionary:
+	var queue = _dict_get(battle_manager.battle_state, "action_queue", [])
+	if queue is Array and not queue.is_empty() and queue[0] is Dictionary:
+		return queue[0]
+	return {}
+
+
+func _run_action_timeline_intent_stage(action: Dictionary) -> void:
+	var actor_id = str(_dict_get(action, "actor_id", active_player_id))
+	var is_enemy_turn = actor_id != "" and not _is_party_member(actor_id)
+	var duration = ACTION_TIMELINE_INTENT_PLAYER_SEC
+	if is_enemy_turn:
+		if enemy_intent_telegraphed:
+			duration = ACTION_TIMELINE_INTENT_ENEMY_SEC
 		else:
-			battle_manager.advance_state(BattleManager.BattleState.TURN_START)
-		_process_turn_loop()
+			var enemy_intent_text = battle_manager.format_action_declaration(actor_id, action)
+			_show_enemy_intent(enemy_intent_text)
+			duration = _get_enemy_intent_stage_duration()
+		enemy_intent_telegraphed = false
+	else:
+		var intent_text = battle_manager.format_action_declaration(actor_id, action)
+		battle_manager.add_message("Intent -> " + intent_text)
+	await _wait_timeline_stage("INTENT", duration, action)
+
+
+func _run_action_timeline_commit_stage(action: Dictionary) -> void:
+	await _wait_timeline_stage("COMMIT", ACTION_TIMELINE_COMMIT_SEC, action)
+
+
+func _run_action_timeline_impact_stage(action: Dictionary, payload: Dictionary, profile: String) -> void:
+	var duration = _estimate_timeline_impact_duration(payload, action, profile)
+	await _wait_timeline_stage("IMPACT", duration, action)
+
+
+func _run_action_timeline_settle_stage(action: Dictionary, profile: String) -> void:
+	var duration = ACTION_TIMELINE_SETTLE_SINGLE_SEC
+	if profile == ACTION_TIMELINE_PROFILE_MULTI:
+		duration = ACTION_TIMELINE_SETTLE_MULTI_SEC
+	elif profile == ACTION_TIMELINE_PROFILE_LIMIT:
+		duration = ACTION_TIMELINE_SETTLE_LIMIT_SEC
+	await _wait_timeline_stage("SETTLE", duration, action)
+
+
+func _wait_timeline_stage(stage_name: String, duration: float, action: Dictionary) -> void:
+	var action_id = str(_dict_get(action, "action_id", "unknown"))
+	battle_manager.add_message("Timeline -> " + stage_name + " (" + action_id + ")")
+	if duration <= 0.0:
 		return
+	await get_tree().create_timer(duration).timeout
+
+
+func _determine_timeline_profile(payload: Dictionary, action: Dictionary) -> String:
+	var action_id = str(_dict_get(action, "action_id", ""))
+	if _is_limit_action(action_id):
+		return ACTION_TIMELINE_PROFILE_LIMIT
+	var multi_target_damage = _dict_get(payload, "multi_target_damage", [])
+	if multi_target_damage is Array and multi_target_damage.size() > 1:
+		return ACTION_TIMELINE_PROFILE_MULTI
+	var damage_instances = _dict_get(payload, "damage_instances", [])
+	if damage_instances is Array and damage_instances.size() > 1:
+		return ACTION_TIMELINE_PROFILE_MULTI
+	var targets = _dict_get(action, "targets", [])
+	if targets is Array and targets.size() > 1:
+		return ACTION_TIMELINE_PROFILE_MULTI
+	return ACTION_TIMELINE_PROFILE_SINGLE
+
+
+func _estimate_timeline_impact_duration(payload: Dictionary, action: Dictionary, profile: String) -> float:
+	var duration = ACTION_TIMELINE_IMPACT_SINGLE_SEC
+	if profile == ACTION_TIMELINE_PROFILE_MULTI:
+		duration = ACTION_TIMELINE_IMPACT_MULTI_SEC
+	elif profile == ACTION_TIMELINE_PROFILE_LIMIT:
+		duration = ACTION_TIMELINE_IMPACT_LIMIT_SEC
+	var attacker_id = str(_dict_get(payload, "attacker_id", _dict_get(action, "actor_id", "")))
+	if attacker_id != "" and animation_controller.has_attack_animation(attacker_id):
+		var attack_anim_time = animation_controller.get_attack_animation_duration(attacker_id)
+		duration = max(duration, attack_anim_time + 0.55)
+	return duration
+
+
+func _enforce_action_timeline_bounds(profile: String, timeline_started_at_ms: int, action: Dictionary) -> void:
+	var elapsed_sec = float(Time.get_ticks_msec() - timeline_started_at_ms) / 1000.0
+	var min_sec = ACTION_TIMELINE_SINGLE_MIN_SEC
+	var max_sec = ACTION_TIMELINE_SINGLE_MAX_SEC
+	if profile == ACTION_TIMELINE_PROFILE_MULTI:
+		min_sec = ACTION_TIMELINE_MULTI_MIN_SEC
+		max_sec = ACTION_TIMELINE_MULTI_MAX_SEC
+	elif profile == ACTION_TIMELINE_PROFILE_LIMIT:
+		min_sec = ACTION_TIMELINE_LIMIT_MIN_SEC
+		max_sec = ACTION_TIMELINE_LIMIT_MAX_SEC
+	if elapsed_sec < min_sec:
+		await get_tree().create_timer(min_sec - elapsed_sec).timeout
+		return
+	if elapsed_sec > max_sec:
+		var action_id = str(_dict_get(action, "action_id", "unknown"))
+		push_warning("Action timeline exceeded target max (" + action_id + "): " + str(elapsed_sec))
+
+
+func _get_enemy_intent_stage_duration() -> float:
+	return clamp(enemy_intent_duration, ENEMY_INTENT_TELEGRAPH_MIN_SEC, ENEMY_INTENT_TELEGRAPH_MAX_SEC)
+
+
+func _run_limit_break_cinematic_intro(action: Dictionary) -> void:
+	var action_id = str(_dict_get(action, "action_id", ""))
+	if not _is_limit_action(action_id):
+		return
+	limit_cinematic_active = true
+	limit_cinematic_action_id = action_id
+	input_locked = true
+	battle_menu.set_enabled(false)
+	target_cursor.deactivate()
+	var actor_id = str(_dict_get(action, "actor_id", ""))
+	if actor_id != "":
+		_play_action_whip(actor_id)
+	_show_limit_overlay(action_id)
+	game_feel_controller.on_limit_break()
+	await _wait_timeline_stage("LIMIT_CINEMATIC", ACTION_TIMELINE_LIMIT_PRE_IMPACT_SEC, action)
+
+
+func _determine_action_terminal(result: Dictionary) -> String:
+	if _dict_get(result, "ok", false) == false:
+		if _can_retry_failed_player_action():
+			return ACTION_TERMINAL_FAILED_RETRY
+		return ACTION_TERMINAL_FAILED_ADVANCE
+	if battle_over:
+		return ACTION_TERMINAL_BATTLE_END
+	return ACTION_TERMINAL_SUCCESS
+
+
+func _can_retry_failed_player_action() -> bool:
+	if not _is_party_member(active_player_id):
+		return false
+	var failed_actor = battle_manager.get_actor_by_id(active_player_id)
+	return failed_actor != null and not failed_actor.is_ko()
+
+
+func _dispatch_action_terminal(terminal: String, result: Dictionary, payload: Dictionary, resolution_id: int) -> void:
+	match terminal:
+		ACTION_TERMINAL_FAILED_RETRY:
+			_handle_failed_action_retry(result)
+		ACTION_TERMINAL_FAILED_ADVANCE:
+			_handle_failed_action_advance(result)
+			await _advance_after_resolved_action(resolution_id)
+		ACTION_TERMINAL_BATTLE_END:
+			_finalize_battle_end_after_action()
+		ACTION_TERMINAL_SUCCESS:
+			await _handle_successful_action_resolution(payload, resolution_id)
+		_:
+			push_warning("Unknown action terminal path: " + terminal)
+
+
+func _handle_failed_action_retry(result: Dictionary) -> void:
+	var err = str(_dict_get(result, "error", "action_failed"))
+	message_log("Action failed: " + err)
+	input_locked = false
+	target_cursor.deactivate()
+	var failed_actor = battle_manager.get_actor_by_id(active_player_id)
+	if failed_actor == null:
+		return
+	battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
+	battle_menu.set_enabled(true)
+	battle_menu.setup(failed_actor)
+	_update_menu_disables(failed_actor)
+
+
+func _handle_failed_action_advance(result: Dictionary) -> void:
+	var err = str(_dict_get(result, "error", "action_failed"))
+	message_log("Action failed: " + err)
+	input_locked = false
+	target_cursor.deactivate()
+
+
+func _handle_successful_action_resolution(payload: Dictionary, resolution_id: int) -> void:
 	if _dict_get(payload, "metamagic", "") != "":
 		var actor_meta = battle_manager.get_actor_by_id(active_player_id)
 		if actor_meta:
@@ -1039,8 +1333,7 @@ func _execute_next_action() -> void:
 			battle_menu.open_magic_submenu()
 			_update_menu_disables(actor_meta)
 			return
-	
-	# End of turn cleanup
+
 	var actor = battle_manager.get_actor_by_id(active_player_id)
 	if actor and not _dict_get(payload, "quicken", false):
 		battle_manager.process_end_of_turn_effects(actor)
@@ -1051,22 +1344,38 @@ func _execute_next_action() -> void:
 		_update_menu_disables(actor)
 		battle_manager.advance_state(BattleManager.BattleState.ACTION_SELECT)
 		return
-	
 	if battle_over:
-		message_log("Battle Ended!")
-		battle_manager.advance_state(BattleManager.BattleState.BATTLE_END)
+		_finalize_battle_end_after_action()
 		return
+	await _advance_after_resolved_action(resolution_id)
 
+
+func _advance_after_resolved_action(resolution_id: int) -> void:
 	battle_manager.advance_state(BattleManager.BattleState.TURN_END)
 	var previous_turn_count = battle_manager.battle_state.turn_count
 	battle_manager.advance_turn()
 	await get_tree().create_timer(0.9).timeout
+	if battle_over:
+		_finalize_battle_end_after_action()
+		return
 	if battle_manager.battle_state.turn_count > previous_turn_count:
 		battle_manager.advance_state(BattleManager.BattleState.ROUND_END)
 		battle_manager.advance_state(BattleManager.BattleState.ROUND_INIT)
 	else:
 		battle_manager.advance_state(BattleManager.BattleState.TURN_START)
+	_enter_turn_loop_for_resolution(resolution_id)
+
+
+func _enter_turn_loop_for_resolution(resolution_id: int) -> void:
+	if last_turn_loop_resolution_id == resolution_id:
+		return
+	last_turn_loop_resolution_id = resolution_id
 	_process_turn_loop()
+
+
+func _finalize_battle_end_after_action() -> void:
+	message_log("Battle Ended!")
+	battle_manager.advance_state(BattleManager.BattleState.BATTLE_END)
 
 func message_log(msg: String) -> void:
 	# Helper to update label
@@ -1085,7 +1394,11 @@ func message_log(msg: String) -> void:
 func _is_priority_combat_message(text: String) -> bool:
 	if text.begins_with("State ->"):
 		return true
+	if text.begins_with("Timeline ->"):
+		return true
 	if text.begins_with("REACTION:"):
+		return true
+	if text.findn("limit") != -1:
 		return true
 	if text.findn("riposte") != -1:
 		return true

@@ -39,7 +39,17 @@ const IDLE_SPRITESHEETS := {
 const ATTACK_SPRITESHEETS := {
 	"kairus": {
 		"path": "res://assets/sprites/characters/kairus-attack-anim.png",
-		"hframes": 4, "vframes": 3, "fps": 14, "impact_frame": 8
+		"hframes": 4, "vframes": 4, "fps": 10, "impact_frame": 2,
+		"frame_sequence": [0, 1, 2, 3, 4],
+		"frame_durations": [0.09, 0.09, 1.00, 0.24, 0.28],
+		"frame_y_offsets": [0.0, 0.0, 0.0, 0.0, 0.0]
+	},
+	"ludwig": {
+		"path": "res://assets/sprites/characters/Ludwig_sprite_main.png",
+		"hframes": 1, "vframes": 1, "fps": 8, "impact_frame": 0,
+		"frame_sequence": [0, 0, 0, 0, 0],
+		"frame_durations": [0.10, 0.10, 0.70, 0.22, 0.24],
+		"frame_y_offsets": [0.0, 0.0, 0.0, 0.0, 0.0]
 	}
 }
 const BOSS_SPRITE := "res://assets/sprites/characters/marcus_sprite_main.png"

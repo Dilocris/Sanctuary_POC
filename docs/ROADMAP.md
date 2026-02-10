@@ -1,7 +1,7 @@
 <!--
 DOC_ID: ROADMAP
 STATUS: ACTIVE - Production backlog and delivery plan
-LAST_UPDATED: 2026-02-08
+LAST_UPDATED: 2026-02-09
 SUPERSEDES: Prior ad-hoc roadmap table
 SUPERSEDED_BY: None
 
@@ -14,7 +14,12 @@ LLM USAGE INSTRUCTIONS:
 
 # Sanctuary POC - Production Roadmap
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-09
+
+## Scope Note
+- This roadmap tracks the active **combat backlog**.
+- For broader prototype-to-RPG expansion phases, see `docs/PROGRAM_PLAN.md`.
+- For current snapshot/context before execution, read `docs/STATUS.md`.
 
 ## Product Direction
 Target feel: readable, high-impact turn flow inspired by the pace and clarity of **Chrono Trigger** and **Sea of Stars**.
@@ -79,7 +84,7 @@ Design pillars:
 
 #### CMB-004 - Resolve State Machine Hardening
 - Priority: P0
-- Status: TODO
+- Status: DONE (2026-02-08)
 - Systems/Files:
   - `scripts/battle_scene.gd`
   - `scripts/battle_manager.gd`
@@ -94,7 +99,7 @@ Design pillars:
 
 #### PRE-001 - Action Timeline Contract
 - Priority: P1
-- Status: TODO
+- Status: IN_PROGRESS (2026-02-08)
 - Systems/Files:
   - `scripts/battle_scene.gd`
   - `scripts/battle/battle_animation_controller.gd`
@@ -106,7 +111,7 @@ Design pillars:
 
 #### PRE-002 - Limit Break Cinematic Pipeline (~5s)
 - Priority: P1
-- Status: TODO
+- Status: IN_PROGRESS (2026-02-08)
 - Systems/Files:
   - `scripts/battle_scene.gd`
   - `scripts/battle/battle_animation_controller.gd`
@@ -118,7 +123,7 @@ Design pillars:
 
 #### PRE-003 - Feedback Priority Router
 - Priority: P1
-- Status: TODO
+- Status: IN_PROGRESS (2026-02-08)
 - Systems/Files:
   - `scripts/battle_scene.gd`
   - `scripts/battle/battle_ui_manager.gd`
@@ -129,7 +134,7 @@ Design pillars:
 
 #### PRE-004 - Reaction Impact Pass
 - Priority: P1
-- Status: TODO
+- Status: IN_PROGRESS (2026-02-08)
 - Systems/Files:
   - `scripts/battle_manager.gd`
   - `scripts/battle_scene.gd`
@@ -138,6 +143,27 @@ Design pillars:
   1. Every reaction has consistent motion + damage feedback + log callout.
   2. Riposte uses same readability standards as regular actions.
   3. No duplicate reaction damage/floaters.
+
+#### PRE-005 - Character Animation System Pass
+- Priority: P1
+- Status: IN_PROGRESS (2026-02-09)
+- Systems/Files:
+  - `docs/ANIMATION_SETUP.md` (new)
+  - `scripts/battle/battle_animation_controller.gd`
+  - `scripts/battle/battle_renderer.gd`
+  - `assets/sprites/characters/kairus-attack-anim.png`
+  - related `.import` and spritesheet config entries
+- Acceptance Criteria:
+  1. Add clear documentation for ideal battle animation setup:
+     animation frame layout contract, anchor/baseline rules, frame size policy, playback timing conventions, and import settings.
+  2. Kairus attack animation is simplified to a 5-frame beat:
+     `2 anticipation` (quick), `1 impact` (held ~1s), `2 recover` (slower than anticipation).
+  3. Kairus attack spritesheet cut/alignment issue is fixed:
+     no vertical zigzag/jitter; baseline stays stable across all frames.
+  4. Add guardrails to prevent recurrence:
+     one validation checklist (or debug helper) for frame dimensions/anchor consistency before enabling a new attack sheet.
+  5. Add at least one additional follow-up task beyond Kairus:
+     apply the same documented setup to one more character attack animation config as a proving pass.
 
 ---
 
@@ -319,14 +345,12 @@ Design pillars:
 
 #### QA-001 - GDScript Parse/Runtime Gate
 - Priority: P0
-- Status: TODO
+- Status: DONE (2026-02-08)
 - Systems/Files:
   - `scripts/dev/check_gdscript_sanity.ps1`
-  - optional Godot CLI command docs
 - Acceptance Criteria:
   1. All `.gd` edits run sanity script before commit.
-  2. If Godot CLI available, headless parse check is mandatory.
-  3. Failures block commit and are logged in handoff notes.
+  2. Failures block commit and are logged in handoff notes.
 
 #### QA-002 - Combat Smoke Matrix
 - Priority: P0
@@ -348,4 +372,4 @@ A ticket is only DONE when:
 4. `docs/AGENT_SWAP.md` has a short entry for what changed and why.
 
 ## Current Focus
-Next actionable ticket: **CMB-004** (Resolve State Machine Hardening), then **PRE-001**.
+Next actionable tickets: **PRE-001**, **PRE-002**, **PRE-003**, **PRE-004**, **PRE-005**.

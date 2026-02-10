@@ -777,7 +777,7 @@ func _create_party_ui() -> void:
 		status_row.size = Vector2(130, STATUS_ICON_SIZE)
 		status_row.clip_contents = true
 		status_row.add_theme_constant_override("separation", STATUS_ICON_GAP)
-		status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		status_row.mouse_filter = Control.MOUSE_FILTER_STOP
 		_party_status_icon_rows[actor_id] = status_row
 		party_status_panel.add_child(status_row)
 		_refresh_status_icons(actor)
